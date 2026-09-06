@@ -6,10 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "prisma skills sync || exit 0"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@prisma/client": "5.19.1",
+    "bcryptjs": "^3.0.3",
     "next": "16.3.4",
+    "prisma": "5.19.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
@@ -21,6 +28,13 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5"
+  },
+  "allowScripts": {
+    "@prisma/client@5.19.1": true,
+    "@prisma/engines@5.19.1": true,
+    "prisma@5.19.1": true,
+    "unrs-resolver@1.12.2": true
   }
 }
