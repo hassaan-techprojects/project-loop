@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { DM_Sans, Manrope } from "next/font/google";
@@ -18,35 +17,54 @@ const manrope = Manrope({
   variable: "--font-manrope",
 });
 
-export default function LoginPage() {
+type Status = "idle" | "loading" | "success" | "error";
+
+export default function SignupPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [workspace, setWorkspace] = useState("");
+  const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    setLoading(true);
+    setStatus("loading");
 
-    const res = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
+    try {
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password, workspace }),
+      });
 
-    setLoading(false);
+      const data = await res.json();
 
-    if (res?.error) {
-      setError("Invalid email or password.");
-      return;
+      if (!res.ok) {
+        setError(data.error || "Something went wrong. Please try again.");
+        setStatus("error");
+        return;
+      }
+
+      setStatus("success");
+      setTimeout(() => {
+        router.push("/login");
+      }, 900);
+    } catch {
+      setError("Network error. Please try again.");
+      setStatus("error");
     }
-
-    router.push("/dashboard");
-    router.refresh();
   }
+
+  const buttonLabel =
+    status === "loading"
+      ? "Creating workspace…"
+      : status === "success"
+      ? "Workspace created ✓"
+      : "Create workspace";
 
   return (
     <div className={`${dmSans.variable} ${manrope.variable} page`}>
@@ -85,14 +103,28 @@ export default function LoginPage() {
 
         <section className="form-area">
           <div className="form-wrap">
-            <div className="eyebrow">Welcome back to LOOP</div>
-            <h1>Sign in to your workspace</h1>
+            <div className="eyebrow">Get started with LOOP</div>
+            <h1>Create your workspace</h1>
             <p className="intro">
-              Pick up where you left off and keep the customer voice at the
-              center of every decision.
+              Set up your workspace and bring your team&apos;s customer
+              feedback into one place.
             </p>
 
             <form onSubmit={handleSubmit}>
+              <div className="field">
+                <label htmlFor="name">Full name</label>
+                <input
+                  id="name"
+                  name="name"
+                  type="text"
+                  placeholder="Your full name"
+                  autoComplete="name"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </div>
+
               <div className="field">
                 <label htmlFor="email">Work email</label>
                 <input
@@ -114,9 +146,10 @@ export default function LoginPage() {
                     id="password"
                     name="password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="Enter your password"
-                    autoComplete="current-password"
+                    placeholder="Create a password"
+                    autoComplete="new-password"
                     required
+                    minLength={8}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
@@ -130,15 +163,33 @@ export default function LoginPage() {
                 </div>
               </div>
 
+              <div className="field">
+                <label htmlFor="workspace">Workspace name</label>
+                <input
+                  id="workspace"
+                  name="workspace"
+                  type="text"
+                  placeholder="e.g. Acme Inc."
+                  autoComplete="organization"
+                  required
+                  value={workspace}
+                  onChange={(e) => setWorkspace(e.target.value)}
+                />
+              </div>
+
               {error && <p className="form-error">{error}</p>}
 
-              <button className="create" type="submit" disabled={loading}>
-                {loading ? "Signing in…" : "Sign in"}
+              <button
+                className="create"
+                type="submit"
+                disabled={status === "loading" || status === "success"}
+              >
+                {buttonLabel}
               </button>
             </form>
 
             <div className="signin">
-              Don&apos;t have an account? <Link href="/signup">Sign up</Link>
+              Already have an account? <Link href="/login">Sign in</Link>
             </div>
           </div>
         </section>
