@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,43 +35,111 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <form
-        onSubmit={handleSubmit}
-        className="bg-white p-8 rounded-lg shadow-md w-full max-w-sm"
-      >
-        <h1 className="text-2xl font-semibold mb-6">Log in to LOOP</h1>
+    <div className="min-h-screen flex items-center justify-center bg-[var(--bg)] px-4 py-8">
+      <div className="w-full max-w-[1050px] min-h-[500px] rounded-[20px] overflow-hidden shadow-xl border border-[var(--border)] bg-[var(--surface)] flex flex-col md:flex-row">
 
-        {error && (
-          <p className="text-red-600 text-sm mb-4">{error}</p>
-        )}
-
-        <label className="block text-sm font-medium mb-1">Email</label>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          className="w-full border rounded px-3 py-2 mb-4"
-        />
-
-        <label className="block text-sm font-medium mb-1">Password</label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          className="w-full border rounded px-3 py-2 mb-6"
-        />
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700 disabled:opacity-50"
+        {/* Left panel */}
+        <div
+          className="w-full md:w-1/2 flex flex-col items-center justify-center text-center gap-5 px-8 py-12 md:p-[60px] text-white"
+          style={{
+            backgroundImage: `linear-gradient(160deg, var(--primary-gradient-from) 0%, var(--primary-gradient-to) 100%)`,
+          }}
         >
-          {loading ? "Logging in..." : "Log in"}
-        </button>
-      </form>
+          <div className="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M12 4C7.58 4 4 7.58 4 12M4 12C4 16.42 7.58 20 12 20M4 12H8M12 20C16.42 20 20 16.42 20 12M20 12C20 7.58 16.42 4 12 4M20 12H16"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </div>
+
+          <h1
+            className="text-2xl tracking-tight"
+            style={{ fontFamily: "var(--font-display)" }}
+          >
+            LOOP
+          </h1>
+          <p className="text-sm text-white/70 -mt-3">
+            Close the loop on customer feedback.
+          </p>
+
+          <div className="h-px w-12 bg-white/20 my-2" />
+
+          <h2
+            className="text-3xl"
+            style={{ fontFamily: "var(--font-display)" }}
+          >
+            Welcome Back!
+          </h2>
+          <p className="text-white/80 text-sm max-w-xs leading-relaxed">
+            Sign in to continue to your LOOP workspace and turn customer
+            feedback into meaningful product decisions.
+          </p>
+        </div>
+
+        {/* Right panel */}
+        <div className="w-full md:w-1/2 flex items-center justify-center px-8 py-12 md:p-[60px]">
+          <form onSubmit={handleSubmit} className="w-full max-w-[430px]">
+            <h2
+              className="text-2xl mb-8"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              Sign In
+            </h2>
+
+            {error && (
+              <p className="text-[var(--negative)] text-sm mb-4">{error}</p>
+            )}
+
+            <label className="block text-sm font-medium text-[var(--text)] mb-2">
+              Email
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full h-[50px] border border-[var(--border)] rounded-[10px] px-4 mb-5 text-[var(--text)] bg-[var(--surface)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-shadow"
+            />
+
+            <label className="block text-sm font-medium text-[var(--text)] mb-2">
+              Password
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full h-[50px] border border-[var(--border)] rounded-[10px] px-4 mb-7 text-[var(--text)] bg-[var(--surface)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-shadow"
+            />
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full h-[50px] rounded-[10px] text-white font-medium transition-colors disabled:opacity-50"
+              style={{ backgroundColor: "var(--primary)" }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.backgroundColor = "var(--primary-hover)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.backgroundColor = "var(--primary)";
+              }}
+            >
+              {loading ? "Signing in..." : "Login"}
+            </button>
+
+            <p className="text-center text-sm text-[var(--text-muted)] mt-6">
+              Don&apos;t have an account?{" "}
+              <Link href="/signup" className="text-[var(--primary)] font-medium">
+                Sign up
+              </Link>
+            </p>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }
