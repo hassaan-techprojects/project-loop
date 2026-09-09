@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 type Sentiment = "POS" | "NEU" | "NEG" | null;
 type Status = "NEW" | "REVIEWED" | "ACTIONED";
+type Role = "ADMIN" | "ANALYST" | "VIEWER";
 
 type FeedbackItem = {
   id: string;
@@ -40,6 +41,12 @@ type FeedbackResponse = {
   };
 };
 
+type SessionResponse = {
+  user?: {
+    role?: string;
+  };
+};
+
 const channelLabels: Record<string, string> = {
   support_ticket: "Support Ticket",
   app_store_review: "App Store Review",
@@ -51,6 +58,7 @@ const channelLabels: Record<string, string> = {
   website_feedback: "Website Feedback",
   chat: "Chat",
   social: "Social",
+  manual: "Manual",
 };
 
 function formatChannel(channel: string) {
@@ -142,15 +150,7 @@ function getPageNumbers(currentPage: number, totalPages: number) {
     ];
   }
 
-  return [
-    1,
-    -1,
-    currentPage - 1,
-    currentPage,
-    currentPage + 1,
-    -1,
-    totalPages,
-  ];
+  return [1, -1, currentPage - 1, currentPage, currentPage + 1, -1, totalPages];
 }
 
 export default function FeedbackPage() {
@@ -182,6 +182,60 @@ export default function FeedbackPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
+  const [statusUpdateError, setStatusUpdateError] = useState("");
+
+  const [role, setRole] = useState<Role | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
+
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createSuccess, setCreateSuccess] = useState("");
+
+  const [newContent, setNewContent] = useState("");
+  const [newChannel, setNewChannel] = useState("manual");
+  const [newCustomerLabel, setNewCustomerLabel] = useState("");
+  const [newSourceRef, setNewSourceRef] = useState("");
+  const [newSentiment, setNewSentiment] = useState<Sentiment>(null);
+  const [newSentimentScore, setNewSentimentScore] = useState("");
+  const [newStatus, setNewStatus] = useState<Status>("NEW");
+
+  const canCreateFeedback = role === "ADMIN" || role === "ANALYST";
+
+  const loadSession = useCallback(async () => {
+    try {
+      setSessionLoading(true);
+
+      const response = await fetch("/api/auth/session", {
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        setRole(null);
+        return;
+      }
+
+      const data = (await response.json()) as SessionResponse;
+      const sessionRole = data.user?.role;
+
+      if (
+        sessionRole === "ADMIN" ||
+        sessionRole === "ANALYST" ||
+        sessionRole === "VIEWER"
+      ) {
+        setRole(sessionRole);
+      } else {
+        setRole(null);
+      }
+    } catch (sessionError) {
+      console.error("Session loading error:", sessionError);
+      setRole(null);
+    } finally {
+      setSessionLoading(false);
+    }
+  }, []);
+
   const loadFeedback = useCallback(async () => {
     try {
       setLoading(true);
@@ -205,14 +259,13 @@ export default function FeedbackPage() {
       });
 
       const data = (await response.json()) as
-        | FeedbackResponse
-        | { error?: string };
+        FeedbackResponse | { error?: string };
 
       if (!response.ok) {
         throw new Error(
           "error" in data && data.error
             ? data.error
-            : "Failed to load feedback."
+            : "Failed to load feedback.",
         );
       }
 
@@ -229,12 +282,56 @@ export default function FeedbackPage() {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Failed to load feedback."
+          : "Failed to load feedback.",
       );
     } finally {
       setLoading(false);
     }
   }, [channel, dateFrom, dateTo, page, search, sentiment, status, theme]);
+
+  async function handleStatusChange(feedbackId: string, nextStatus: Status) {
+    try {
+      setUpdatingStatusId(feedbackId);
+      setStatusUpdateError("");
+
+      const response = await fetch("/api/feedback", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: feedbackId,
+          status: nextStatus,
+        }),
+      });
+
+      const data = (await response.json()) as {
+        message?: string;
+        feedback?: FeedbackItem;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update feedback status.");
+      }
+
+      await loadFeedback();
+    } catch (requestError) {
+      console.error(requestError);
+
+      setStatusUpdateError(
+        requestError instanceof Error
+          ? requestError.message
+          : "Failed to update feedback status.",
+      );
+    } finally {
+      setUpdatingStatusId(null);
+    }
+  }
+
+  useEffect(() => {
+    void loadSession();
+  }, [loadSession]);
 
   useEffect(() => {
     void loadFeedback();
@@ -242,7 +339,7 @@ export default function FeedbackPage() {
 
   const pageNumbers = useMemo(
     () => getPageNumbers(pagination.page, pagination.totalPages),
-    [pagination.page, pagination.totalPages]
+    [pagination.page, pagination.totalPages],
   );
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
@@ -252,10 +349,7 @@ export default function FeedbackPage() {
     setSearch(searchInput.trim());
   }
 
-  function handleFilterChange(
-    setter: (value: string) => void,
-    value: string
-  ) {
+  function handleFilterChange(setter: (value: string) => void, value: string) {
     setPage(1);
     setter(value);
   }
@@ -270,6 +364,119 @@ export default function FeedbackPage() {
     setDateFrom("");
     setDateTo("");
     setPage(1);
+  }
+
+  function resetCreateForm() {
+    setNewContent("");
+    setNewChannel("manual");
+    setNewCustomerLabel("");
+    setNewSourceRef("");
+    setNewSentiment(null);
+    setNewSentimentScore("");
+    setNewStatus("NEW");
+    setCreateError("");
+  }
+
+  function closeCreateForm() {
+    if (createLoading) return;
+
+    setShowCreateForm(false);
+    setCreateError("");
+    setCreateSuccess("");
+    resetCreateForm();
+  }
+
+  async function handleCreateFeedback(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    setCreateLoading(true);
+    setCreateError("");
+    setCreateSuccess("");
+
+    try {
+      const trimmedContent = newContent.trim();
+
+      if (!trimmedContent) {
+        throw new Error("Feedback content is required.");
+      }
+
+      const trimmedChannel = newChannel.trim();
+
+      if (!trimmedChannel) {
+        throw new Error("Channel is required.");
+      }
+
+      let sentimentScore: number | undefined;
+
+      if (newSentimentScore.trim()) {
+        const parsedScore = Number(newSentimentScore);
+
+        if (
+          !Number.isFinite(parsedScore) ||
+          parsedScore < -1 ||
+          parsedScore > 1
+        ) {
+          throw new Error("Sentiment score must be a number between -1 and 1.");
+        }
+
+        sentimentScore = parsedScore;
+      }
+
+      const response = await fetch("/api/feedback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          content: trimmedContent,
+          channel: trimmedChannel,
+          customerLabel: newCustomerLabel.trim(),
+          sourceRef: newSourceRef.trim(),
+          sentiment: newSentiment ?? undefined,
+          sentimentScore,
+          status: newStatus,
+        }),
+      });
+
+      const data = (await response.json()) as {
+        message?: string;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create feedback.");
+      }
+
+      setCreateSuccess("Feedback created successfully.");
+
+      resetCreateForm();
+      setPage(1);
+      setSearchInput("");
+      setSearch("");
+      setChannel("ALL");
+      setSentiment("ALL");
+      setTheme("ALL");
+      setStatus("ALL");
+      setDateFrom("");
+      setDateTo("");
+
+      await loadFeedback();
+
+      window.setTimeout(() => {
+        setShowCreateForm(false);
+        setCreateSuccess("");
+      }, 700);
+    } catch (createRequestError) {
+      console.error(createRequestError);
+
+      setCreateError(
+        createRequestError instanceof Error
+          ? createRequestError.message
+          : "Failed to create feedback.",
+      );
+    } finally {
+      setCreateLoading(false);
+    }
   }
 
   const hasActiveFilters =
@@ -290,15 +497,257 @@ export default function FeedbackPage() {
             Customer Voice
           </div>
 
-          <h1 className="font-serif text-2xl text-white sm:text-3xl">
-            All Feedback
-          </h1>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="font-serif text-2xl text-white sm:text-3xl">
+                All Feedback
+              </h1>
 
-          <p className="mt-1 max-w-2xl text-[10px] leading-4 text-slate-400 sm:text-[11px]">
-            Explore customer feedback from surveys, support tickets, app
-            reviews, and other sources in one place.
-          </p>
+              <p className="mt-1 max-w-2xl text-[10px] leading-4 text-slate-400 sm:text-[11px]">
+                Explore customer feedback from surveys, support tickets, app
+                reviews, and other sources in one place.
+              </p>
+            </div>
+
+            {!sessionLoading && canCreateFeedback && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateForm(true);
+                  setCreateError("");
+                  setCreateSuccess("");
+                }}
+                className="inline-flex h-9 items-center justify-center rounded-md bg-white px-4 text-[10px] font-semibold text-slate-950 transition hover:bg-slate-200"
+              >
+                + Add Feedback
+              </button>
+            )}
+          </div>
         </section>
+
+        {showCreateForm && canCreateFeedback && (
+          <section className="mb-4 rounded-xl border border-indigo-500/20 bg-[#0a1222]/95 p-4 shadow-2xl shadow-black/20">
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-indigo-300">
+                  New Feedback
+                </p>
+
+                <h2 className="mt-1 text-sm font-semibold text-white">
+                  Add customer feedback
+                </h2>
+
+                <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                  Add a feedback item manually to the current workspace.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeCreateForm}
+                disabled={createLoading}
+                className="rounded-md border border-slate-700 bg-slate-900 px-3 py-1.5 text-[9px] font-medium text-slate-400 transition hover:border-slate-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Close
+              </button>
+            </div>
+
+            {createError && (
+              <div className="mb-4 rounded-md border border-rose-500/20 bg-rose-500/5 px-3 py-2">
+                <p className="text-[10px] text-rose-300">{createError}</p>
+              </div>
+            )}
+
+            {createSuccess && (
+              <div className="mb-4 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
+                <p className="text-[10px] text-emerald-300">{createSuccess}</p>
+              </div>
+            )}
+
+            <form onSubmit={handleCreateFeedback}>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="md:col-span-2">
+                  <label
+                    htmlFor="feedback-content"
+                    className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500"
+                  >
+                    Feedback *
+                  </label>
+
+                  <textarea
+                    id="feedback-content"
+                    value={newContent}
+                    onChange={(event) => setNewContent(event.target.value)}
+                    placeholder="Enter the customer's feedback..."
+                    maxLength={5000}
+                    rows={4}
+                    required
+                    className="w-full resize-y rounded-md border border-slate-700 bg-slate-900 px-3 py-2.5 text-[10px] leading-5 text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="feedback-customer"
+                    className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500"
+                  >
+                    Customer
+                  </label>
+
+                  <input
+                    id="feedback-customer"
+                    value={newCustomerLabel}
+                    onChange={(event) =>
+                      setNewCustomerLabel(event.target.value)
+                    }
+                    placeholder="Customer name or label"
+                    maxLength={200}
+                    className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-3 text-[10px] text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="feedback-channel"
+                    className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500"
+                  >
+                    Channel *
+                  </label>
+
+                  <select
+                    id="feedback-channel"
+                    value={newChannel}
+                    onChange={(event) => setNewChannel(event.target.value)}
+                    required
+                    className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-3 text-[10px] text-slate-300 outline-none focus:border-indigo-500/60"
+                  >
+                    <option value="manual">Manual</option>
+                    <option value="support_ticket">Support Ticket</option>
+                    <option value="app_store_review">App Store Review</option>
+                    <option value="nps_survey">NPS Survey</option>
+                    <option value="sales_call">Sales Call</option>
+                    <option value="community_post">Community Post</option>
+                    <option value="email">Email</option>
+                    <option value="website_feedback">Website Feedback</option>
+                    <option value="chat">Chat</option>
+                    <option value="social">Social</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="feedback-source"
+                    className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500"
+                  >
+                    Source Reference
+                  </label>
+
+                  <input
+                    id="feedback-source"
+                    value={newSourceRef}
+                    onChange={(event) => setNewSourceRef(event.target.value)}
+                    placeholder="Optional ticket, URL, or source ID"
+                    maxLength={500}
+                    className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-3 text-[10px] text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="feedback-sentiment"
+                    className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500"
+                  >
+                    Sentiment
+                  </label>
+
+                  <select
+                    id="feedback-sentiment"
+                    value={newSentiment ?? ""}
+                    onChange={(event) => {
+                      const value = event.target.value;
+
+                      setNewSentiment(
+                        value === "POS" || value === "NEU" || value === "NEG"
+                          ? value
+                          : null,
+                      );
+                    }}
+                    className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-3 text-[10px] text-slate-300 outline-none focus:border-indigo-500/60"
+                  >
+                    <option value="">Unclassified</option>
+                    <option value="POS">Positive</option>
+                    <option value="NEU">Neutral</option>
+                    <option value="NEG">Negative</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="feedback-score"
+                    className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500"
+                  >
+                    Sentiment Score
+                  </label>
+
+                  <input
+                    id="feedback-score"
+                    type="number"
+                    min="-1"
+                    max="1"
+                    step="0.01"
+                    value={newSentimentScore}
+                    onChange={(event) =>
+                      setNewSentimentScore(event.target.value)
+                    }
+                    placeholder="-1 to 1"
+                    className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-3 text-[10px] text-slate-200 outline-none transition placeholder:text-slate-600 focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/20"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="feedback-status"
+                    className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500"
+                  >
+                    Status
+                  </label>
+
+                  <select
+                    id="feedback-status"
+                    value={newStatus}
+                    onChange={(event) =>
+                      setNewStatus(event.target.value as Status)
+                    }
+                    className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-3 text-[10px] text-slate-300 outline-none focus:border-indigo-500/60"
+                  >
+                    <option value="NEW">New</option>
+                    <option value="REVIEWED">Reviewed</option>
+                    <option value="ACTIONED">Actioned</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeCreateForm}
+                  disabled={createLoading}
+                  className="h-9 rounded-md border border-slate-700 bg-slate-900 px-4 text-[10px] font-semibold text-slate-400 transition hover:border-slate-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={createLoading}
+                  className="h-9 rounded-md bg-white px-4 text-[10px] font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {createLoading ? "Creating..." : "Create Feedback"}
+                </button>
+              </div>
+            </form>
+          </section>
+        )}
 
         <section className="rounded-xl border border-slate-800 bg-[#0a1222]/95 shadow-2xl shadow-black/20">
           <div className="border-b border-slate-800 p-3">
@@ -334,6 +783,7 @@ export default function FeedbackPage() {
                     <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                       Showing
                     </p>
+
                     <p className="text-[10px] text-slate-300">
                       {pagination.total} total feedback items
                     </p>
@@ -447,6 +897,15 @@ export default function FeedbackPage() {
               <h2 className="text-[11px] font-semibold text-slate-200">
                 Feedback Inbox
               </h2>
+
+              {statusUpdateError && (
+                <div className="mt-2 rounded-md border border-rose-500/20 bg-rose-500/5 px-3 py-2">
+                  <p className="text-[9px] text-rose-300">
+                    {statusUpdateError}
+                  </p>
+                </div>
+              )}
+
               <p className="text-[9px] text-slate-500">
                 Latest customer feedback and triage signals.
               </p>
@@ -461,6 +920,7 @@ export default function FeedbackPage() {
             <div className="flex min-h-[420px] items-center justify-center">
               <div className="text-center">
                 <div className="mx-auto mb-3 h-7 w-7 animate-spin rounded-full border-2 border-slate-700 border-t-indigo-400" />
+
                 <p className="text-[11px] text-slate-500">
                   Loading feedback...
                 </p>
@@ -472,6 +932,7 @@ export default function FeedbackPage() {
                 <p className="text-sm font-semibold text-rose-300">
                   Unable to load feedback
                 </p>
+
                 <p className="mt-1 text-[11px] text-slate-500">{error}</p>
 
                 <button
@@ -495,8 +956,7 @@ export default function FeedbackPage() {
                 </p>
 
                 <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                  Try changing your search or filters to find matching
-                  feedback.
+                  Try changing your search or filters to find matching feedback.
                 </p>
 
                 {hasActiveFilters && (
@@ -519,18 +979,23 @@ export default function FeedbackPage() {
                       <th className="px-3 py-2 text-left text-[8px] font-medium uppercase tracking-[0.12em] text-slate-500">
                         Customer
                       </th>
+
                       <th className="px-3 py-2 text-left text-[8px] font-medium uppercase tracking-[0.12em] text-slate-500">
                         Feedback
                       </th>
+
                       <th className="px-3 py-2 text-left text-[8px] font-medium uppercase tracking-[0.12em] text-slate-500">
                         Channel
                       </th>
+
                       <th className="px-3 py-2 text-left text-[8px] font-medium uppercase tracking-[0.12em] text-slate-500">
                         Sentiment
                       </th>
+
                       <th className="px-3 py-2 text-left text-[8px] font-medium uppercase tracking-[0.12em] text-slate-500">
                         Status
                       </th>
+
                       <th className="px-3 py-2 text-left text-[8px] font-medium uppercase tracking-[0.12em] text-slate-500">
                         Date
                       </th>
@@ -555,6 +1020,7 @@ export default function FeedbackPage() {
                               <p className="max-w-[125px] truncate text-[9px] font-medium text-slate-300">
                                 {truncateCustomer(item.customerLabel)}
                               </p>
+
                               <p className="text-[8px] text-slate-600">
                                 Customer
                               </p>
@@ -569,14 +1035,16 @@ export default function FeedbackPage() {
 
                           {item.feedbackThemes.length > 0 && (
                             <div className="mt-1 flex flex-wrap gap-1">
-                              {item.feedbackThemes.slice(0, 2).map((themeItem) => (
-                                <span
-                                  key={themeItem.theme.name}
-                                  className="text-[7px] text-slate-600"
-                                >
-                                  #{themeItem.theme.name}
-                                </span>
-                              ))}
+                              {item.feedbackThemes
+                                .slice(0, 2)
+                                .map((themeItem) => (
+                                  <span
+                                    key={themeItem.theme.name}
+                                    className="text-[7px] text-slate-600"
+                                  >
+                                    #{themeItem.theme.name}
+                                  </span>
+                                ))}
                             </div>
                           )}
                         </td>
@@ -590,7 +1058,7 @@ export default function FeedbackPage() {
                         <td className="px-3 py-3 align-middle">
                           <span
                             className={`inline-flex rounded-full border px-2 py-1 text-[8px] font-medium ${sentimentClass(
-                              item.sentiment
+                              item.sentiment,
                             )}`}
                           >
                             <span className="mr-1">•</span>
@@ -599,13 +1067,42 @@ export default function FeedbackPage() {
                         </td>
 
                         <td className="px-3 py-3 align-middle">
-                          <span
-                            className={`inline-flex rounded-full border px-2 py-1 text-[8px] font-medium uppercase ${statusClass(
-                              item.status
-                            )}`}
-                          >
-                            {statusLabel(item.status)}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={item.status}
+                              disabled={
+                                !canCreateFeedback ||
+                                updatingStatusId === item.id
+                              }
+                              onChange={(event) =>
+                                void handleStatusChange(
+                                  item.id,
+                                  event.target.value as Status,
+                                )
+                              }
+                              className={`rounded-full border px-2 py-1 text-[8px] font-medium uppercase outline-none transition ${statusClass(
+                                item.status,
+                              )} ${
+                                !canCreateFeedback ||
+                                updatingStatusId === item.id
+                                  ? "cursor-not-allowed opacity-60"
+                                  : "cursor-pointer"
+                              }`}
+                              aria-label={`Update status for ${truncateCustomer(
+                                item.customerLabel,
+                              )}`}
+                            >
+                              <option value="NEW">New</option>
+                              <option value="REVIEWED">Reviewed</option>
+                              <option value="ACTIONED">Actioned</option>
+                            </select>
+
+                            {updatingStatusId === item.id && (
+                              <span className="text-[8px] text-slate-500">
+                                Updating...
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         <td className="whitespace-nowrap px-3 py-3 align-middle text-[8px] text-slate-400">
@@ -623,27 +1120,47 @@ export default function FeedbackPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-2">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-xs font-semibold text-violet-300">
-                          {(item.customerLabel || "C")
-                            .charAt(0)
-                            .toUpperCase()}
+                          {(item.customerLabel || "C").charAt(0).toUpperCase()}
                         </div>
 
                         <div className="min-w-0">
                           <p className="truncate text-[10px] font-medium text-slate-300">
                             {truncateCustomer(item.customerLabel)}
                           </p>
+
                           <p className="text-[8px] text-slate-600">
                             {formatDate(item.createdAt)}
                           </p>
                         </div>
                       </div>
 
-                      <span
-                        className={`shrink-0 rounded-full border px-2 py-1 text-[8px] font-medium uppercase ${statusClass(
-                          item.status
-                        )}`}
-                      >
-                        {statusLabel(item.status)}
+                      <span>
+                        <select
+                          value={item.status}
+                          disabled={
+                            !canCreateFeedback || updatingStatusId === item.id
+                          }
+                          onChange={(event) =>
+                            void handleStatusChange(
+                              item.id,
+                              event.target.value as Status,
+                            )
+                          }
+                          className={`shrink-0 rounded-full border px-2 py-1 text-[8px] font-medium uppercase outline-none transition ${statusClass(
+                            item.status,
+                          )} ${
+                            !canCreateFeedback || updatingStatusId === item.id
+                              ? "cursor-not-allowed opacity-60"
+                              : "cursor-pointer"
+                          }`}
+                          aria-label={`Update status for ${truncateCustomer(
+                            item.customerLabel,
+                          )}`}
+                        >
+                          <option value="NEW">New</option>
+                          <option value="REVIEWED">Reviewed</option>
+                          <option value="ACTIONED">Actioned</option>
+                        </select>
                       </span>
                     </div>
 
@@ -658,7 +1175,7 @@ export default function FeedbackPage() {
 
                       <span
                         className={`rounded-full border px-2 py-1 text-[8px] font-medium ${sentimentClass(
-                          item.sentiment
+                          item.sentiment,
                         )}`}
                       >
                         {formatSentiment(item.sentiment)}
@@ -687,11 +1204,10 @@ export default function FeedbackPage() {
                   <span className="text-slate-300">
                     {Math.min(
                       pagination.page * pagination.limit,
-                      pagination.total
+                      pagination.total,
                     )}
                   </span>{" "}
-                  of{" "}
-                  <span className="text-slate-300">{pagination.total}</span>
+                  of <span className="text-slate-300">{pagination.total}</span>
                 </p>
 
                 <div className="flex items-center justify-end gap-1">
@@ -725,7 +1241,7 @@ export default function FeedbackPage() {
                       >
                         {pageNumber}
                       </button>
-                    )
+                    ),
                   )}
 
                   <button

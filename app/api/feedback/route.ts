@@ -24,6 +24,44 @@ const querySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(10),
 });
 
+const createFeedbackSchema = z.object({
+  content: z
+    .string()
+    .trim()
+    .min(1, "Feedback content is required.")
+    .max(5000, "Feedback content must be 5000 characters or less."),
+
+  channel: z
+    .string()
+    .trim()
+    .min(1, "Channel is required.")
+    .max(100, "Channel must be 100 characters or less."),
+
+  sourceRef: z
+    .string()
+    .trim()
+    .max(500, "Source reference must be 500 characters or less.")
+    .optional()
+    .or(z.literal("")),
+
+  customerLabel: z
+    .string()
+    .trim()
+    .max(200, "Customer label must be 200 characters or less.")
+    .optional()
+    .or(z.literal("")),
+
+  sentiment: z.enum(["POS", "NEU", "NEG"]).optional(),
+
+  sentimentScore: z
+    .number()
+    .min(-1)
+    .max(1)
+    .optional(),
+
+  status: z.enum(["NEW", "REVIEWED", "ACTIONED"]).default("NEW"),
+});
+
 function startOfUtcDay(date: string): Date {
   return new Date(`${date}T00:00:00.000Z`);
 }
@@ -238,6 +276,192 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(
       { error: "Failed to load feedback." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const session = await auth();
+
+    if (!session?.user?.id || !session.user.workspaceId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const role = session.user.role;
+    const workspaceId = session.user.workspaceId;
+
+    if (role !== "ADMIN" && role !== "ANALYST") {
+      return NextResponse.json(
+        {
+          error: "You do not have permission to create feedback.",
+        },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json();
+
+    const parsed = createFeedbackSchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          error: "Invalid feedback data.",
+          details: parsed.error.flatten(),
+        },
+        { status: 400 }
+      );
+    }
+
+    const {
+      content,
+      channel,
+      sourceRef,
+      customerLabel,
+      sentiment,
+      sentimentScore,
+      status,
+    } = parsed.data;
+
+    const feedback = await prisma.feedback.create({
+      data: {
+        content,
+        channel,
+        sourceRef: sourceRef || null,
+        customerLabel: customerLabel || null,
+        sentiment: sentiment ?? null,
+        sentimentScore: sentimentScore ?? null,
+        status,
+        workspaceId,
+      },
+      select: {
+        id: true,
+        content: true,
+        channel: true,
+        sourceRef: true,
+        customerLabel: true,
+        sentiment: true,
+        sentimentScore: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        message: "Feedback created successfully.",
+        feedback,
+      },
+      { status: 201 }
+    );
+  } catch (error) {
+    console.error("Create feedback API error:", error);
+
+    return NextResponse.json(
+      { error: "Failed to create feedback." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const session = await auth();
+
+    if (!session?.user?.id || !session.user.workspaceId) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const role = session.user.role;
+    const workspaceId = session.user.workspaceId;
+
+    if (role !== "ADMIN" && role !== "ANALYST") {
+      return NextResponse.json(
+        {
+          error: "You do not have permission to update feedback.",
+        },
+        { status: 403 }
+      );
+    }
+
+    const bodySchema = z.object({
+      id: z.string().min(1, "Feedback ID is required."),
+      status: z.enum(["NEW", "REVIEWED", "ACTIONED"]),
+    });
+
+    const body = await request.json();
+
+    const parsed = bodySchema.safeParse(body);
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          error: "Invalid feedback update data.",
+          details: parsed.error.flatten(),
+        },
+        { status: 400 }
+      );
+    }
+
+    const { id, status } = parsed.data;
+
+    const existingFeedback = await prisma.feedback.findFirst({
+      where: {
+        id,
+        workspaceId,
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (!existingFeedback) {
+      return NextResponse.json(
+        { error: "Feedback not found." },
+        { status: 404 }
+      );
+    }
+
+    const updatedFeedback = await prisma.feedback.update({
+      where: {
+        id: existingFeedback.id,
+      },
+      data: {
+        status,
+      },
+      select: {
+        id: true,
+        content: true,
+        channel: true,
+        sourceRef: true,
+        customerLabel: true,
+        sentiment: true,
+        sentimentScore: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return NextResponse.json({
+      message: "Feedback status updated successfully.",
+      feedback: updatedFeedback,
+    });
+  } catch (error) {
+    console.error("Update feedback API error:", error);
+
+    return NextResponse.json(
+      { error: "Failed to update feedback." },
       { status: 500 }
     );
   }
