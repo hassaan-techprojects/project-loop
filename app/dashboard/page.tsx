@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Area,
@@ -325,8 +326,8 @@ export default function DashboardPage() {
                 Refresh
               </button>
 
-              <button
-                type="button"
+              <Link
+                href="/feedback"
                 className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
               >
                 <svg
@@ -339,7 +340,7 @@ export default function DashboardPage() {
                   <path d="M12 5v14M5 12h14" />
                 </svg>
                 Add feedback
-              </button>
+              </Link>
             </div>
           </div>
         </section>

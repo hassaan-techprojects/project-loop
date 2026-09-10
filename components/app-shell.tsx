@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 
@@ -37,7 +38,12 @@ const navigationItems = [
     available: true,
   },
   {
-    label: "Team",
+    label: "Import Feedback",
+    href: "/import-feedback",
+    available: true,
+  },
+  {
+    label: "Team & Roles",
     href: "/team",
     available: true,
   },
@@ -77,6 +83,7 @@ export default function AppShell({ children }: AppShellProps) {
   const [workspaceName, setWorkspaceName] = useState("Workspace");
   const [userName, setUserName] = useState("");
   const [role, setRole] = useState<Role | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,6 +145,36 @@ export default function AppShell({ children }: AppShellProps) {
             LOOP
           </Link>
 
+          <button
+            type="button"
+            onClick={() => setMenuOpen((open) => !open)}
+            aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={menuOpen}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-200 transition hover:bg-slate-800 lg:hidden"
+          >
+            {menuOpen ? (
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+              >
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
+            ) : (
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+              >
+                <path d="M4 7h16M4 12h16M4 17h16" />
+              </svg>
+            )}
+          </button>
+
           <div className="min-w-0 text-right">
             <p className="truncate text-[11px] font-medium text-slate-200">
               {workspaceName}
@@ -154,20 +191,58 @@ export default function AppShell({ children }: AppShellProps) {
       </header>
 
       <div className="flex min-h-[calc(100vh-3.5rem)] flex-col lg:flex-row">
-        <aside className="w-full shrink-0 border-b border-slate-800 bg-[#070b14] lg:w-56 lg:border-b-0 lg:border-r">
-          <nav className="flex gap-1 overflow-x-auto px-3 py-3 lg:sticky lg:top-0 lg:flex-col lg:px-3 lg:py-5">
+        {menuOpen && (
+          <button
+            type="button"
+            aria-label="Close navigation menu"
+            onClick={() => setMenuOpen(false)}
+            className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          />
+        )}
+
+        <aside
+          className={`fixed inset-y-0 left-0 z-40 w-64 border-r border-slate-800 bg-[#070b14] pt-14 shadow-2xl transition-transform duration-200 lg:static lg:z-auto lg:w-56 lg:translate-x-0 lg:border-r ${
+            menuOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3 lg:hidden">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Navigation
+            </span>
+
+            <button
+              type="button"
+              onClick={() => setMenuOpen(false)}
+              aria-label="Close navigation menu"
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-900 hover:text-white"
+            >
+              <svg
+                className="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+              >
+                <path d="M6 6l12 12M18 6 6 18" />
+              </svg>
+            </button>
+          </div>
+
+          <nav className="flex flex-col gap-1 overflow-y-auto px-3 py-5">
             {navigationItems.map((item) => {
-              const isActive = pathname === item.href;
+              const isActive =
+                pathname === item.href ||
+                (item.href !== "/dashboard" && pathname.startsWith(`${item.href}/`));
 
               if (!item.available) {
                 return (
                   <div
                     key={item.label}
-                    className="flex shrink-0 items-center rounded-md px-3 py-2 text-[10px] text-slate-600 lg:w-full"
+                    className="flex w-full items-center rounded-md px-3 py-2 text-[10px] text-slate-600"
                     title="Coming soon"
                   >
                     <span>{item.label}</span>
-                    <span className="ml-auto hidden text-[8px] uppercase tracking-wider text-slate-700 lg:inline">
+                    <span className="ml-auto text-[8px] uppercase tracking-wider text-slate-700">
                       Soon
                     </span>
                   </div>
@@ -178,7 +253,8 @@ export default function AppShell({ children }: AppShellProps) {
                 <Link
                   key={item.label}
                   href={item.href}
-                  className={`flex shrink-0 items-center rounded-md px-3 py-2 text-[10px] font-medium transition lg:w-full ${
+                  onClick={() => setMenuOpen(false)}
+                  className={`flex w-full items-center rounded-md px-3 py-2 text-[10px] font-medium transition ${
                     isActive
                       ? "bg-slate-800 text-white"
                       : "text-slate-400 hover:bg-slate-900 hover:text-slate-200"
@@ -189,6 +265,30 @@ export default function AppShell({ children }: AppShellProps) {
               );
             })}
           </nav>
+
+          <div className="border-t border-slate-800 px-3 py-4">
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                void signOut({ callbackUrl: "/login" });
+              }}
+              className="flex w-full items-center rounded-md px-3 py-2 text-[10px] font-medium text-slate-400 transition hover:bg-slate-900 hover:text-white"
+            >
+              <svg
+                className="mr-2 h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+              >
+                <path d="M10 17l5-5-5-5" />
+                <path d="M15 12H3" />
+                <path d="M13 5V4a1 1 0 011-1h5a2 2 0 012 2v14a2 2 0 01-2 2h-5a1 1 0 01-1-1v-1" />
+              </svg>
+              <span>Log out</span>
+            </button>
+          </div>
         </aside>
 
         <main className="min-w-0 flex-1">{children}</main>
