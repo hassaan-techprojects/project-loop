@@ -8,13 +8,14 @@ datasource db {
 }
 
 model Workspace {
-  id        String     @id @default(cuid())
-  name      String
-  createdAt DateTime   @default(now())
-  feedback  Feedback[]
-  reports   Report[]
-  themes    Theme[]
-  users     User[]
+  id                   String                   @id @default(cuid())
+  name                 String
+  createdAt            DateTime                 @default(now())
+  feedback             Feedback[]
+  reports              Report[]
+  themes               Theme[]
+  users                User[]
+  googleFormIntegration GoogleFormIntegration?
 }
 
 model User {
@@ -117,4 +118,16 @@ enum Status {
   NEW
   REVIEWED
   ACTIONED
+}
+
+model GoogleFormIntegration {
+  id           String    @id @default(cuid())
+  workspaceId  String    @unique
+  webhookSecret String   @unique
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
 }

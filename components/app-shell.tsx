@@ -43,6 +43,11 @@ const navigationItems = [
     available: true,
   },
   {
+    label: "Google Form",
+    href: "/integrations/google-form",
+    available: true,
+  },
+  {
     label: "Team & Roles",
     href: "/team",
     available: true,
@@ -137,20 +142,15 @@ export default function AppShell({ children }: AppShellProps) {
   return (
     <div className="min-h-screen bg-[#030712] text-white">
       <header className="border-b border-slate-800 bg-[#080d18]">
-        <div className="flex min-h-14 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-          <Link
-            href="/dashboard"
-            className="shrink-0 text-sm font-semibold tracking-[0.28em] text-white transition hover:text-slate-300"
-          >
-            LOOP
-          </Link>
-
+        <div className="relative flex min-h-14 items-center px-4 sm:px-6 lg:px-8">
           <button
             type="button"
             onClick={() => setMenuOpen((open) => !open)}
-            aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-label={
+              menuOpen ? "Close navigation menu" : "Open navigation menu"
+            }
             aria-expanded={menuOpen}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-200 transition hover:bg-slate-800 lg:hidden"
+            className="absolute left-4 top-3 z-50 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-200 transition hover:bg-slate-800 sm:left-6 lg:left-8"
           >
             {menuOpen ? (
               <svg
@@ -159,6 +159,7 @@ export default function AppShell({ children }: AppShellProps) {
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="1.8"
+                aria-hidden="true"
               >
                 <path d="M6 6l12 12M18 6 6 18" />
               </svg>
@@ -169,13 +170,21 @@ export default function AppShell({ children }: AppShellProps) {
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="1.8"
+                aria-hidden="true"
               >
                 <path d="M4 7h16M4 12h16M4 17h16" />
               </svg>
             )}
           </button>
 
-          <div className="min-w-0 text-right">
+          <Link
+            href="/dashboard"
+            className="ml-14 shrink-0 text-sm font-semibold tracking-[0.28em] text-white transition hover:text-slate-300 sm:ml-16"
+          >
+            LOOP
+          </Link>
+
+          <div className="ml-auto min-w-0 text-right">
             <p className="truncate text-[11px] font-medium text-slate-200">
               {workspaceName}
               <span className="px-1.5 text-slate-600">/</span>
@@ -196,16 +205,16 @@ export default function AppShell({ children }: AppShellProps) {
             type="button"
             aria-label="Close navigation menu"
             onClick={() => setMenuOpen(false)}
-            className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+            className="fixed inset-0 z-30 bg-black/50"
           />
         )}
 
         <aside
-          className={`fixed inset-y-0 left-0 z-40 w-64 border-r border-slate-800 bg-[#070b14] pt-14 shadow-2xl transition-transform duration-200 lg:static lg:z-auto lg:w-56 lg:translate-x-0 lg:border-r ${
+          className={`fixed inset-y-0 left-0 z-40 w-64 border-r border-slate-800 bg-[#070b14] pt-14 shadow-2xl transition-transform duration-200 ${
             menuOpen ? "translate-x-0" : "-translate-x-full"
           }`}
         >
-          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3 lg:hidden">
+          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3">
             <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
               Navigation
             </span>
@@ -222,17 +231,19 @@ export default function AppShell({ children }: AppShellProps) {
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="1.8"
+                aria-hidden="true"
               >
                 <path d="M6 6l12 12M18 6 6 18" />
               </svg>
             </button>
           </div>
 
-          <nav className="flex flex-col gap-1 overflow-y-auto px-3 py-5">
+          <nav className="flex max-h-[calc(100vh-8rem)] flex-col gap-1 overflow-y-auto px-3 py-5">
             {navigationItems.map((item) => {
               const isActive =
                 pathname === item.href ||
-                (item.href !== "/dashboard" && pathname.startsWith(`${item.href}/`));
+                (item.href !== "/dashboard" &&
+                  pathname.startsWith(`${item.href}/`));
 
               if (!item.available) {
                 return (
@@ -242,6 +253,7 @@ export default function AppShell({ children }: AppShellProps) {
                     title="Coming soon"
                   >
                     <span>{item.label}</span>
+
                     <span className="ml-auto text-[8px] uppercase tracking-wider text-slate-700">
                       Soon
                     </span>
@@ -266,7 +278,7 @@ export default function AppShell({ children }: AppShellProps) {
             })}
           </nav>
 
-          <div className="border-t border-slate-800 px-3 py-4">
+          <div className="absolute bottom-0 left-0 right-0 border-t border-slate-800 bg-[#070b14] px-3 py-4">
             <button
               type="button"
               onClick={() => {
@@ -281,11 +293,13 @@ export default function AppShell({ children }: AppShellProps) {
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="1.8"
+                aria-hidden="true"
               >
                 <path d="M10 17l5-5-5-5" />
                 <path d="M15 12H3" />
                 <path d="M13 5V4a1 1 0 011-1h5a2 2 0 012 2v14a2 2 0 01-2 2h-5a1 1 0 01-1-1v-1" />
               </svg>
+
               <span>Log out</span>
             </button>
           </div>
