@@ -4,6 +4,74 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 
+export async function GET() {
+  try {
+    const session = await auth();
+
+    if (!session?.user?.id || !session.user.workspaceId) {
+      return NextResponse.json(
+        {
+          error: "Unauthorized.",
+        },
+        { status: 401 }
+      );
+    }
+
+    if (session.user.role !== "ADMIN") {
+      return NextResponse.json(
+        {
+          error:
+            "Only workspace admins can view Google Form integration.",
+        },
+        { status: 403 }
+      );
+    }
+
+    const workspaceId = session.user.workspaceId;
+
+    const integration =
+      await prisma.googleFormIntegration.findUnique({
+        where: {
+          workspaceId,
+        },
+        select: {
+          id: true,
+          workspaceId: true,
+          createdAt: true,
+        },
+      });
+
+    if (!integration) {
+      return NextResponse.json(
+        {
+          error:
+            "Google Form integration is not configured for this workspace.",
+        },
+        { status: 404 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        integration,
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error(
+      "Google Form integration lookup error:",
+      error
+    );
+
+    return NextResponse.json(
+      {
+        error: "Failed to load Google Form integration.",
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST() {
   try {
     const session = await auth();
@@ -20,7 +88,8 @@ export async function POST() {
     if (session.user.role !== "ADMIN") {
       return NextResponse.json(
         {
-          error: "Only workspace admins can configure Google Form integration.",
+          error:
+            "Only workspace admins can configure Google Form integration.",
         },
         { status: 403 }
       );
@@ -48,23 +117,26 @@ export async function POST() {
       );
     }
 
-    const webhookSecret = randomBytes(32).toString("hex");
+    const webhookSecret =
+      randomBytes(32).toString("hex");
 
-    const integration = await prisma.googleFormIntegration.create({
-      data: {
-        workspaceId,
-        webhookSecret,
-      },
-      select: {
-        id: true,
-        workspaceId: true,
-        createdAt: true,
-      },
-    });
+    const integration =
+      await prisma.googleFormIntegration.create({
+        data: {
+          workspaceId,
+          webhookSecret,
+        },
+        select: {
+          id: true,
+          workspaceId: true,
+          createdAt: true,
+        },
+      });
 
     return NextResponse.json(
       {
-        message: "Google Form integration created successfully.",
+        message:
+          "Google Form integration created successfully.",
         integration: {
           id: integration.id,
           workspaceId: integration.workspaceId,
