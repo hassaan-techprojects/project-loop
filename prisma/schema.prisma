@@ -14,6 +14,7 @@ model Workspace {
   feedback             Feedback[]
   reports              Report[]
   themes               Theme[]
+  channels             Channel[]
   users                User[]
   googleFormIntegration GoogleFormIntegration?
 }
@@ -42,6 +43,7 @@ model Feedback {
   sentiment      Sentiment?
   sentimentScore Float?
   status         Status          @default(NEW)
+  deletedAt      DateTime?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   workspaceId    String
@@ -53,6 +55,7 @@ model Feedback {
   @@index([workspaceId, status])
   @@index([workspaceId, createdAt])
   @@index([workspaceId, channel])
+  @@index([workspaceId, deletedAt])
 }
 
 model Theme {
@@ -60,12 +63,29 @@ model Theme {
   name           String
   description    String?
   color          String?
+  isActive       Boolean         @default(true)
   createdAt      DateTime        @default(now())
   workspaceId    String
   feedbackThemes FeedbackTheme[]
   workspace      Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId])
+  @@index([workspaceId, isActive])
+  @@unique([workspaceId, name])
+}
+
+model Channel {
+  id          String    @id @default(cuid())
+  name        String
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([workspaceId, isActive])
+  @@unique([workspaceId, name])
 }
 
 model FeedbackTheme {

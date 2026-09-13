@@ -1,6 +1,12 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 type Sentiment = "POS" | "NEU" | "NEG" | null;
 type Status = "NEW" | "REVIEWED" | "ACTIONED";
@@ -38,6 +44,8 @@ type FeedbackResponse = {
   filters: {
     channels: string[];
     themes: string[];
+    activeChannels: string[];
+    activeThemes: string[];
   };
 };
 
@@ -59,6 +67,7 @@ const channelLabels: Record<string, string> = {
   chat: "Chat",
   social: "Social",
   manual: "Manual",
+  GOOGLE_FORM: "GOOGLE_FORM",
 };
 
 function formatChannel(channel: string) {
@@ -150,13 +159,23 @@ function getPageNumbers(currentPage: number, totalPages: number) {
     ];
   }
 
-  return [1, -1, currentPage - 1, currentPage, currentPage + 1, -1, totalPages];
+  return [
+    1,
+    -1,
+    currentPage - 1,
+    currentPage,
+    currentPage + 1,
+    -1,
+    totalPages,
+  ];
 }
 
 export default function FeedbackPage() {
   const [feedback, setFeedback] = useState<FeedbackItem[]>([]);
   const [channels, setChannels] = useState<string[]>([]);
+  const [activeChannels, setActiveChannels] = useState<string[]>([]);
   const [themes, setThemes] = useState<string[]>([]);
+  const [activeThemes, setActiveThemes] = useState<string[]>([]);
 
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -169,6 +188,9 @@ export default function FeedbackPage() {
   const [dateTo, setDateTo] = useState("");
 
   const [page, setPage] = useState(1);
+  const [view, setView] = useState<"inbox" | "trash">("inbox");
+  const [trashActionId, setTrashActionId] = useState<string | null>(null);
+  const [trashActionError, setTrashActionError] = useState("");
 
   const [pagination, setPagination] = useState({
     page: 1,
@@ -183,7 +205,7 @@ export default function FeedbackPage() {
   const [error, setError] = useState("");
 
   const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null);
-  const [statusUpdateError, setStatusUpdateError] = useState("");
+const [statusUpdateError, setStatusUpdateError] = useState("");
 
   const [role, setRole] = useState<Role | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
@@ -195,6 +217,7 @@ export default function FeedbackPage() {
 
   const [newContent, setNewContent] = useState("");
   const [newChannel, setNewChannel] = useState("manual");
+  const [newTheme, setNewTheme] = useState("");
   const [newCustomerLabel, setNewCustomerLabel] = useState("");
   const [newSourceRef, setNewSourceRef] = useState("");
   const [newSentiment, setNewSentiment] = useState<Sentiment>(null);
@@ -216,8 +239,14 @@ export default function FeedbackPage() {
         return;
       }
 
-      const data = (await response.json()) as SessionResponse;
-      const sessionRole = data.user?.role;
+      const data = (await response.json()) as SessionResponse | null;
+
+      if (!data?.user) {
+        setRole(null);
+        return;
+      }
+
+      const sessionRole = data.user.role;
 
       if (
         sessionRole === "ADMIN" ||
@@ -253,19 +282,21 @@ export default function FeedbackPage() {
       if (status !== "ALL") params.set("status", status);
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
+      if (view === "trash") params.set("trash", "true");
 
       const response = await fetch(`/api/feedback?${params.toString()}`, {
         cache: "no-store",
       });
 
       const data = (await response.json()) as
-        FeedbackResponse | { error?: string };
+        | FeedbackResponse
+        | { error?: string };
 
       if (!response.ok) {
         throw new Error(
           "error" in data && data.error
             ? data.error
-            : "Failed to load feedback.",
+            : "Failed to load feedback."
         );
       }
 
@@ -274,7 +305,19 @@ export default function FeedbackPage() {
       setFeedback(result.feedback);
       setPagination(result.pagination);
       setChannels(result.filters.channels);
+      setActiveChannels(result.filters.activeChannels);
       setThemes(result.filters.themes);
+      setActiveThemes(result.filters.activeThemes);
+      setNewChannel((current) =>
+        result.filters.activeChannels.includes(current)
+          ? current
+          : result.filters.activeChannels[0] ?? ""
+      );
+      setNewTheme((current) =>
+        current === "" || result.filters.activeThemes.includes(current)
+          ? current
+          : ""
+      );
     } catch (requestError) {
       console.error(requestError);
 
@@ -282,53 +325,98 @@ export default function FeedbackPage() {
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Failed to load feedback.",
+          : "Failed to load feedback."
       );
     } finally {
       setLoading(false);
     }
-  }, [channel, dateFrom, dateTo, page, search, sentiment, status, theme]);
-
-  async function handleStatusChange(feedbackId: string, nextStatus: Status) {
-    try {
-      setUpdatingStatusId(feedbackId);
-      setStatusUpdateError("");
-
-      const response = await fetch("/api/feedback", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id: feedbackId,
-          status: nextStatus,
-        }),
-      });
-
-      const data = (await response.json()) as {
-        message?: string;
-        feedback?: FeedbackItem;
-        error?: string;
-      };
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to update feedback status.");
-      }
-
-      await loadFeedback();
-    } catch (requestError) {
-      console.error(requestError);
-
-      setStatusUpdateError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Failed to update feedback status.",
-      );
-    } finally {
-      setUpdatingStatusId(null);
-    }
+  }, [channel, dateFrom, dateTo, page, search, sentiment, status, theme, view]);
+  
+async function handleTrashAction(
+  feedbackId: string,
+  action: "trash" | "restore" | "permanent"
+) {
+  if (action === "permanent") {
+    const confirmed = window.confirm(
+      "Permanently delete this feedback? This action cannot be undone."
+    );
+    if (!confirmed) return;
   }
 
+  try {
+    setTrashActionId(feedbackId);
+    setTrashActionError("");
+
+    const response = await fetch("/api/feedback", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: feedbackId, action }),
+    });
+
+    const data = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to update feedback trash.");
+    }
+
+    await loadFeedback();
+  } catch (requestError) {
+    console.error(requestError);
+    setTrashActionError(
+      requestError instanceof Error
+        ? requestError.message
+        : "Failed to update feedback trash."
+    );
+  } finally {
+    setTrashActionId(null);
+  }
+}
+
+async function handleStatusChange(
+  feedbackId: string,
+  nextStatus: Status
+) {
+  try {
+    setUpdatingStatusId(feedbackId);
+    setStatusUpdateError("");
+
+    const response = await fetch("/api/feedback", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        id: feedbackId,
+        status: nextStatus,
+      }),
+    });
+
+    const data = (await response.json()) as
+      | {
+          message?: string;
+          feedback?: FeedbackItem;
+          error?: string;
+        };
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || "Failed to update feedback status."
+      );
+    }
+
+    await loadFeedback();
+  } catch (requestError) {
+    console.error(requestError);
+
+    setStatusUpdateError(
+      requestError instanceof Error
+        ? requestError.message
+        : "Failed to update feedback status."
+    );
+  } finally {
+    setUpdatingStatusId(null);
+  }
+}
+  
   useEffect(() => {
     void loadSession();
   }, [loadSession]);
@@ -339,7 +427,7 @@ export default function FeedbackPage() {
 
   const pageNumbers = useMemo(
     () => getPageNumbers(pagination.page, pagination.totalPages),
-    [pagination.page, pagination.totalPages],
+    [pagination.page, pagination.totalPages]
   );
 
   function handleSearch(event: FormEvent<HTMLFormElement>) {
@@ -349,9 +437,26 @@ export default function FeedbackPage() {
     setSearch(searchInput.trim());
   }
 
-  function handleFilterChange(setter: (value: string) => void, value: string) {
+  function handleFilterChange(
+    setter: (value: string) => void,
+    value: string
+  ) {
     setPage(1);
     setter(value);
+  }
+
+  function switchView(nextView: "inbox" | "trash") {
+    setView(nextView);
+    setPage(1);
+    setTrashActionError("");
+    setSearchInput("");
+    setSearch("");
+    setChannel("ALL");
+    setSentiment("ALL");
+    setTheme("ALL");
+    setStatus("ALL");
+    setDateFrom("");
+    setDateTo("");
   }
 
   function clearFilters() {
@@ -368,7 +473,8 @@ export default function FeedbackPage() {
 
   function resetCreateForm() {
     setNewContent("");
-    setNewChannel("manual");
+    setNewChannel(activeChannels[0] ?? "manual");
+    setNewTheme("");
     setNewCustomerLabel("");
     setNewSourceRef("");
     setNewSentiment(null);
@@ -411,12 +517,10 @@ export default function FeedbackPage() {
       if (newSentimentScore.trim()) {
         const parsedScore = Number(newSentimentScore);
 
-        if (
-          !Number.isFinite(parsedScore) ||
-          parsedScore < -1 ||
-          parsedScore > 1
-        ) {
-          throw new Error("Sentiment score must be a number between -1 and 1.");
+        if (!Number.isFinite(parsedScore) || parsedScore < -1 || parsedScore > 1) {
+          throw new Error(
+            "Sentiment score must be a number between -1 and 1."
+          );
         }
 
         sentimentScore = parsedScore;
@@ -430,6 +534,7 @@ export default function FeedbackPage() {
         body: JSON.stringify({
           content: trimmedContent,
           channel: trimmedChannel,
+          themeName: newTheme.trim(),
           customerLabel: newCustomerLabel.trim(),
           sourceRef: newSourceRef.trim(),
           sentiment: newSentiment ?? undefined,
@@ -472,7 +577,7 @@ export default function FeedbackPage() {
       setCreateError(
         createRequestError instanceof Error
           ? createRequestError.message
-          : "Failed to create feedback.",
+          : "Failed to create feedback."
       );
     } finally {
       setCreateLoading(false);
@@ -500,7 +605,7 @@ export default function FeedbackPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h1 className="font-serif text-2xl text-white sm:text-3xl">
-                All Feedback
+                {view === "trash" ? "Trash" : "All Feedback"}
               </h1>
 
               <p className="mt-1 max-w-2xl text-[10px] leading-4 text-slate-400 sm:text-[11px]">
@@ -509,7 +614,14 @@ export default function FeedbackPage() {
               </p>
             </div>
 
-            {!sessionLoading && canCreateFeedback && (
+            <div className="flex items-center rounded-md border border-slate-800 bg-slate-900/70 p-0.5">
+              <button type="button" onClick={() => switchView("inbox")} className={`rounded px-3 py-1.5 text-[9px] font-semibold transition ${view === "inbox" ? "bg-white text-slate-950" : "text-slate-500 hover:text-white"}`}>Inbox</button>
+              {canCreateFeedback && (
+                <button type="button" onClick={() => switchView("trash")} className={`rounded px-3 py-1.5 text-[9px] font-semibold transition ${view === "trash" ? "bg-white text-slate-950" : "text-slate-500 hover:text-white"}`}>Trash</button>
+              )}
+            </div>
+
+            {!sessionLoading && canCreateFeedback && view === "inbox" && (
               <button
                 type="button"
                 onClick={() => {
@@ -525,7 +637,7 @@ export default function FeedbackPage() {
           </div>
         </section>
 
-        {showCreateForm && canCreateFeedback && (
+        {showCreateForm && canCreateFeedback && view === "inbox" && (
           <section className="mb-4 rounded-xl border border-indigo-500/20 bg-[#0a1222]/95 p-4 shadow-2xl shadow-black/20">
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
@@ -560,7 +672,9 @@ export default function FeedbackPage() {
 
             {createSuccess && (
               <div className="mb-4 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-                <p className="text-[10px] text-emerald-300">{createSuccess}</p>
+                <p className="text-[10px] text-emerald-300">
+                  {createSuccess}
+                </p>
               </div>
             )}
 
@@ -621,16 +735,34 @@ export default function FeedbackPage() {
                     required
                     className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-3 text-[10px] text-slate-300 outline-none focus:border-indigo-500/60"
                   >
-                    <option value="manual">Manual</option>
-                    <option value="support_ticket">Support Ticket</option>
-                    <option value="app_store_review">App Store Review</option>
-                    <option value="nps_survey">NPS Survey</option>
-                    <option value="sales_call">Sales Call</option>
-                    <option value="community_post">Community Post</option>
-                    <option value="email">Email</option>
-                    <option value="website_feedback">Website Feedback</option>
-                    <option value="chat">Chat</option>
-                    <option value="social">Social</option>
+                    {activeChannels.map((item) => (
+                      <option key={item} value={item}>
+                        {formatChannel(item)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="feedback-theme"
+                    className="mb-1.5 block text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-500"
+                  >
+                    Theme
+                  </label>
+
+                  <select
+                    id="feedback-theme"
+                    value={newTheme}
+                    onChange={(event) => setNewTheme(event.target.value)}
+                    className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-3 text-[10px] text-slate-300 outline-none focus:border-indigo-500/60"
+                  >
+                    <option value="">No theme</option>
+                    {activeThemes.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -669,7 +801,7 @@ export default function FeedbackPage() {
                       setNewSentiment(
                         value === "POS" || value === "NEU" || value === "NEG"
                           ? value
-                          : null,
+                          : null
                       );
                     }}
                     className="h-9 w-full rounded-md border border-slate-700 bg-slate-900 px-3 text-[10px] text-slate-300 outline-none focus:border-indigo-500/60"
@@ -898,13 +1030,19 @@ export default function FeedbackPage() {
                 Feedback Inbox
               </h2>
 
-              {statusUpdateError && (
+              {trashActionError && (
                 <div className="mt-2 rounded-md border border-rose-500/20 bg-rose-500/5 px-3 py-2">
-                  <p className="text-[9px] text-rose-300">
-                    {statusUpdateError}
-                  </p>
+                  <p className="text-[9px] text-rose-300">{trashActionError}</p>
                 </div>
               )}
+
+              {statusUpdateError && (
+  <div className="mt-2 rounded-md border border-rose-500/20 bg-rose-500/5 px-3 py-2">
+    <p className="text-[9px] text-rose-300">
+      {statusUpdateError}
+    </p>
+  </div>
+)}
 
               <p className="text-[9px] text-slate-500">
                 Latest customer feedback and triage signals.
@@ -956,7 +1094,8 @@ export default function FeedbackPage() {
                 </p>
 
                 <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                  Try changing your search or filters to find matching feedback.
+                  Try changing your search or filters to find matching
+                  feedback.
                 </p>
 
                 {hasActiveFilters && (
@@ -999,6 +1138,11 @@ export default function FeedbackPage() {
                       <th className="px-3 py-2 text-left text-[8px] font-medium uppercase tracking-[0.12em] text-slate-500">
                         Date
                       </th>
+                      {canCreateFeedback && (
+                        <th className="px-3 py-2 text-left text-[8px] font-medium uppercase tracking-[0.12em] text-slate-500">
+                          Actions
+                        </th>
+                      )}
                     </tr>
                   </thead>
 
@@ -1058,56 +1202,68 @@ export default function FeedbackPage() {
                         <td className="px-3 py-3 align-middle">
                           <span
                             className={`inline-flex rounded-full border px-2 py-1 text-[8px] font-medium ${sentimentClass(
-                              item.sentiment,
+                              item.sentiment
                             )}`}
                           >
                             <span className="mr-1">•</span>
                             {formatSentiment(item.sentiment)}
                           </span>
                         </td>
-
+                        
                         <td className="px-3 py-3 align-middle">
-                          <div className="flex items-center gap-2">
-                            <select
-                              value={item.status}
-                              disabled={
-                                !canCreateFeedback ||
-                                updatingStatusId === item.id
-                              }
-                              onChange={(event) =>
-                                void handleStatusChange(
-                                  item.id,
-                                  event.target.value as Status,
-                                )
-                              }
-                              className={`rounded-full border px-2 py-1 text-[8px] font-medium uppercase outline-none transition ${statusClass(
-                                item.status,
-                              )} ${
-                                !canCreateFeedback ||
-                                updatingStatusId === item.id
-                                  ? "cursor-not-allowed opacity-60"
-                                  : "cursor-pointer"
-                              }`}
-                              aria-label={`Update status for ${truncateCustomer(
-                                item.customerLabel,
-                              )}`}
-                            >
-                              <option value="NEW">New</option>
-                              <option value="REVIEWED">Reviewed</option>
-                              <option value="ACTIONED">Actioned</option>
-                            </select>
+  <div className="flex items-center gap-2">
+    <select
+      value={item.status}
+      disabled={
+        !canCreateFeedback || updatingStatusId === item.id
+      }
+      onChange={(event) =>
+        void handleStatusChange(
+          item.id,
+          event.target.value as Status
+        )
+      }
+      className={`rounded-full border px-2 py-1 text-[8px] font-medium uppercase outline-none transition ${statusClass(
+        item.status
+      )} ${
+        !canCreateFeedback || updatingStatusId === item.id
+          ? "cursor-not-allowed opacity-60"
+          : "cursor-pointer"
+      }`}
+      aria-label={`Update status for ${truncateCustomer(
+        item.customerLabel
+      )}`}
+    >
+      <option value="NEW">New</option>
+      <option value="REVIEWED">Reviewed</option>
+      <option value="ACTIONED">Actioned</option>
+    </select>
 
-                            {updatingStatusId === item.id && (
-                              <span className="text-[8px] text-slate-500">
-                                Updating...
-                              </span>
-                            )}
-                          </div>
-                        </td>
+    {updatingStatusId === item.id && (
+      <span className="text-[8px] text-slate-500">
+        Updating...
+      </span>
+    )}
+  </div>
+</td>
 
                         <td className="whitespace-nowrap px-3 py-3 align-middle text-[8px] text-slate-400">
                           {formatDate(item.createdAt)}
                         </td>
+                        {canCreateFeedback && (
+                          <td className="px-3 py-3 align-middle">
+                            {view === "inbox" ? (
+                            <button type="button" disabled={trashActionId === item.id} onClick={() => void handleTrashAction(item.id, "trash")} className="rounded-md border border-rose-500/20 bg-rose-500/5 px-2.5 py-1.5 text-[8px] font-semibold text-rose-300 transition hover:border-rose-500/40 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-50">
+                              {trashActionId === item.id ? "Moving..." : "Move to Trash"}
+                            </button>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <button type="button" disabled={trashActionId === item.id} onClick={() => void handleTrashAction(item.id, "restore")} className="rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-1.5 text-[8px] font-semibold text-emerald-300 transition hover:border-emerald-500/40 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50">Restore</button>
+                              <button type="button" disabled={trashActionId === item.id} onClick={() => void handleTrashAction(item.id, "permanent")} className="rounded-md border border-rose-500/20 bg-rose-500/5 px-2.5 py-1.5 text-[8px] font-semibold text-rose-300 transition hover:border-rose-500/40 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-50">Delete forever</button>
+                            </div>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -1120,7 +1276,9 @@ export default function FeedbackPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-2">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-xs font-semibold text-violet-300">
-                          {(item.customerLabel || "C").charAt(0).toUpperCase()}
+                          {(item.customerLabel || "C")
+                            .charAt(0)
+                            .toUpperCase()}
                         </div>
 
                         <div className="min-w-0">
@@ -1133,34 +1291,34 @@ export default function FeedbackPage() {
                           </p>
                         </div>
                       </div>
-
+ 
                       <span>
-                        <select
-                          value={item.status}
-                          disabled={
-                            !canCreateFeedback || updatingStatusId === item.id
-                          }
-                          onChange={(event) =>
-                            void handleStatusChange(
-                              item.id,
-                              event.target.value as Status,
-                            )
-                          }
-                          className={`shrink-0 rounded-full border px-2 py-1 text-[8px] font-medium uppercase outline-none transition ${statusClass(
-                            item.status,
-                          )} ${
-                            !canCreateFeedback || updatingStatusId === item.id
-                              ? "cursor-not-allowed opacity-60"
-                              : "cursor-pointer"
-                          }`}
-                          aria-label={`Update status for ${truncateCustomer(
-                            item.customerLabel,
-                          )}`}
-                        >
-                          <option value="NEW">New</option>
-                          <option value="REVIEWED">Reviewed</option>
-                          <option value="ACTIONED">Actioned</option>
-                        </select>
+                      <select
+  value={item.status}
+  disabled={
+    !canCreateFeedback || updatingStatusId === item.id
+  }
+  onChange={(event) =>
+    void handleStatusChange(
+      item.id,
+      event.target.value as Status
+    )
+  }
+  className={`shrink-0 rounded-full border px-2 py-1 text-[8px] font-medium uppercase outline-none transition ${statusClass(
+    item.status
+  )} ${
+    !canCreateFeedback || updatingStatusId === item.id
+      ? "cursor-not-allowed opacity-60"
+      : "cursor-pointer"
+  }`}
+  aria-label={`Update status for ${truncateCustomer(
+    item.customerLabel
+  )}`}
+>
+  <option value="NEW">New</option>
+  <option value="REVIEWED">Reviewed</option>
+  <option value="ACTIONED">Actioned</option>
+</select>
                       </span>
                     </div>
 
@@ -1175,7 +1333,7 @@ export default function FeedbackPage() {
 
                       <span
                         className={`rounded-full border px-2 py-1 text-[8px] font-medium ${sentimentClass(
-                          item.sentiment,
+                          item.sentiment
                         )}`}
                       >
                         {formatSentiment(item.sentiment)}
@@ -1190,6 +1348,17 @@ export default function FeedbackPage() {
                         </span>
                       ))}
                     </div>
+
+                    {canCreateFeedback && (view === "inbox" ? (
+                      <button type="button" disabled={trashActionId === item.id} onClick={() => void handleTrashAction(item.id, "trash")} className="mt-3 rounded-md border border-rose-500/20 bg-rose-500/5 px-3 py-1.5 text-[9px] font-semibold text-rose-300 transition hover:border-rose-500/40 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-50">
+                        {trashActionId === item.id ? "Moving..." : "Move to Trash"}
+                      </button>
+                    ) : (
+                      <div className="mt-3 flex gap-2">
+                        <button type="button" disabled={trashActionId === item.id} onClick={() => void handleTrashAction(item.id, "restore")} className="rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-1.5 text-[9px] font-semibold text-emerald-300 transition hover:border-emerald-500/40 hover:bg-emerald-500/10 disabled:cursor-not-allowed disabled:opacity-50">Restore</button>
+                        <button type="button" disabled={trashActionId === item.id} onClick={() => void handleTrashAction(item.id, "permanent")} className="rounded-md border border-rose-500/20 bg-rose-500/5 px-3 py-1.5 text-[9px] font-semibold text-rose-300 transition hover:border-rose-500/40 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-50">Delete forever</button>
+                      </div>
+                    ))}
                   </article>
                 ))}
               </div>
@@ -1204,10 +1373,11 @@ export default function FeedbackPage() {
                   <span className="text-slate-300">
                     {Math.min(
                       pagination.page * pagination.limit,
-                      pagination.total,
+                      pagination.total
                     )}
                   </span>{" "}
-                  of <span className="text-slate-300">{pagination.total}</span>
+                  of{" "}
+                  <span className="text-slate-300">{pagination.total}</span>
                 </p>
 
                 <div className="flex items-center justify-end gap-1">
@@ -1241,7 +1411,7 @@ export default function FeedbackPage() {
                       >
                         {pageNumber}
                       </button>
-                    ),
+                    )
                   )}
 
                   <button

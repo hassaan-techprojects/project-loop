@@ -10,23 +10,84 @@ const signupSchema = z.object({
   workspace: z.string().min(1, "Workspace name is required").max(100),
 });
 
+const DEFAULT_THEMES = [
+  {
+    name: "Onboarding",
+    description: "First-time user setup and activation",
+    color: "#6366f1",
+  },
+  {
+    name: "Billing",
+    description: "Invoices, payments, pricing",
+    color: "#f59e0b",
+  },
+  {
+    name: "Performance",
+    description: "Speed and reliability",
+    color: "#ef4444",
+  },
+  {
+    name: "Mobile Experience",
+    description: "Mobile app/web usability",
+    color: "#10b981",
+  },
+  {
+    name: "Integrations",
+    description: "SSO, third-party connections",
+    color: "#8b5cf6",
+  },
+  {
+    name: "Support Response",
+    description: "Customer support quality",
+    color: "#ec4899",
+  },
+];
+
+const DEFAULT_CHANNELS = [
+  "manual",
+  "support_ticket",
+  "app_store_review",
+  "nps_survey",
+  "sales_call",
+  "sales_call_note",
+  "community_post",
+  "email",
+  "website_feedback",
+  "chat",
+  "social",
+  "GOOGLE_FORM",
+];
+
 export async function POST(req: Request) {
   let body: unknown;
+
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid request body." },
+      { status: 400 }
+    );
   }
 
   const parsed = signupSchema.safeParse(body);
+
   if (!parsed.success) {
-    const firstError = parsed.error.issues[0]?.message ?? "Invalid input.";
-    return NextResponse.json({ error: firstError }, { status: 400 });
+    const firstError =
+      parsed.error.issues[0]?.message ?? "Invalid input.";
+
+    return NextResponse.json(
+      { error: firstError },
+      { status: 400 }
+    );
   }
 
   const { name, email, password, workspace } = parsed.data;
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await prisma.user.findUnique({
+    where: { email },
+  });
+
   if (existing) {
     return NextResponse.json(
       { error: "An account with this email already exists." },
@@ -39,7 +100,21 @@ export async function POST(req: Request) {
   try {
     await prisma.$transaction(async (tx) => {
       const ws = await tx.workspace.create({
-        data: { name: workspace },
+        data: {
+          name: workspace,
+          themes: {
+            create: DEFAULT_THEMES.map((theme) => ({
+              ...theme,
+              isActive: true,
+            })),
+          },
+          channels: {
+            create: DEFAULT_CHANNELS.map((channelName) => ({
+              name: channelName,
+              isActive: true,
+            })),
+          },
+        },
       });
 
       await tx.user.create({
@@ -54,11 +129,15 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     console.error("Signup transaction failed:", err);
+
     return NextResponse.json(
       { error: "Something went wrong. Please try again." },
       { status: 500 }
     );
   }
 
-  return NextResponse.json({ success: true }, { status: 201 });
+  return NextResponse.json(
+    { success: true },
+    { status: 201 }
+  );
 }
