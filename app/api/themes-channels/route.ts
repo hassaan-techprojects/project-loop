@@ -42,24 +42,36 @@ const updateSchema = z
     { message: "At least one field must be provided for update." },
   );
 
-
 const saveSchema = z.object({
-  themes: z.array(
-    z.object({
-      id: z.string().min(1),
-      name: z.string().trim().min(1).max(100),
-      description: z.string().trim().max(500).optional().or(z.literal("")),
-      color: z.string().trim().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-      isActive: z.boolean(),
-    }),
-  ).max(200),
-  channels: z.array(
-    z.object({
-      id: z.string().min(1),
-      name: z.string().trim().min(1).max(100),
-      isActive: z.boolean(),
-    }),
-  ).max(200),
+  themes: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().trim().min(1).max(100),
+        description: z
+          .string()
+          .trim()
+          .max(500)
+          .optional()
+          .or(z.literal("")),
+        color: z
+          .string()
+          .trim()
+          .regex(/^#[0-9A-Fa-f]{6}$/)
+          .optional(),
+        isActive: z.boolean(),
+      }),
+    )
+    .max(200),
+  channels: z
+    .array(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().trim().min(1).max(100),
+        isActive: z.boolean(),
+      }),
+    )
+    .max(200),
 });
 
 function canManage(role: string | undefined): boolean {
@@ -85,9 +97,18 @@ async function ensureDefaultChannels(workspaceId: string) {
   await prisma.$transaction(
     DEFAULT_CHANNELS.map((name) =>
       prisma.channel.upsert({
-        where: { workspaceId_name: { workspaceId, name } },
+        where: {
+          workspaceId_name: {
+            workspaceId,
+            name,
+          },
+        },
         update: {},
-        create: { workspaceId, name, isActive: true },
+        create: {
+          workspaceId,
+          name,
+          isActive: true,
+        },
       }),
     ),
   );
@@ -107,7 +128,10 @@ export async function GET() {
   const session = await getSession();
 
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    return NextResponse.json(
+      { error: "Unauthorized." },
+      { status: 401 },
+    );
   }
 
   const workspaceId = session.user.workspaceId;
@@ -120,7 +144,11 @@ export async function GET() {
         where: { workspaceId },
         orderBy: { name: "asc" },
         include: {
-          _count: { select: { feedbackThemes: true } },
+          _count: {
+            select: {
+              feedbackThemes: true,
+            },
+          },
         },
       }),
       prisma.channel.findMany({
@@ -149,6 +177,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Themes and channels GET failed:", error);
+
     return NextResponse.json(
       { error: "Failed to load themes and channels." },
       { status: 500 },
@@ -160,12 +189,18 @@ export async function POST(request: Request) {
   const session = await getSession();
 
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    return NextResponse.json(
+      { error: "Unauthorized." },
+      { status: 401 },
+    );
   }
 
   if (!canManage(session.user.role)) {
     return NextResponse.json(
-      { error: "You do not have permission to manage themes or channels." },
+      {
+        error:
+          "You do not have permission to manage themes or channels.",
+      },
       { status: 403 },
     );
   }
@@ -175,14 +210,20 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid request body." },
+      { status: 400 },
+    );
   }
 
   const parsed = createSchema.safeParse(body);
 
   if (!parsed.success) {
     return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "Invalid input." },
+      {
+        error:
+          parsed.error.issues[0]?.message ?? "Invalid input.",
+      },
       { status: 400 },
     );
   }
@@ -236,14 +277,21 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
       return NextResponse.json(
-        { error: "A theme or channel with this name already exists in this workspace." },
+        {
+          error:
+            "A theme or channel with this name already exists in this workspace.",
+        },
         { status: 409 },
       );
     }
 
     console.error("Theme or channel creation failed:", error);
+
     return NextResponse.json(
       { error: "Failed to create theme or channel." },
       { status: 500 },
@@ -251,95 +299,155 @@ export async function POST(request: Request) {
   }
 }
 
-
 export async function PUT(request: Request) {
   const session = await getSession();
 
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    return NextResponse.json(
+      { error: "Unauthorized." },
+      { status: 401 },
+    );
   }
 
   if (!canManage(session.user.role)) {
     return NextResponse.json(
-      { error: "You do not have permission to manage themes or channels." },
+      {
+        error:
+          "You do not have permission to manage themes or channels.",
+      },
       { status: 403 },
     );
   }
 
   let body: unknown;
+
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid request body." },
+      { status: 400 },
+    );
   }
 
   const parsed = saveSchema.safeParse(body);
+
   if (!parsed.success) {
     return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "Invalid settings data." },
+      {
+        error:
+          parsed.error.issues[0]?.message ??
+          "Invalid settings data.",
+      },
       { status: 400 },
     );
   }
 
   const workspaceId = session.user.workspaceId;
+  const { themes, channels } = parsed.data;
 
   try {
+    const themeIds = themes.map((theme) => theme.id);
+    const channelIds = channels.map((channel) => channel.id);
+
     const [themeCount, channelCount] = await Promise.all([
-      prisma.theme.count({
-        where: {
-          workspaceId,
-          id: { in: parsed.data.themes.map((item) => item.id) },
-        },
-      }),
-      prisma.channel.count({
-        where: {
-          workspaceId,
-          id: { in: parsed.data.channels.map((item) => item.id) },
-        },
-      }),
+      themeIds.length > 0
+        ? prisma.theme.count({
+            where: {
+              workspaceId,
+              id: {
+                in: themeIds,
+              },
+            },
+          })
+        : Promise.resolve(0),
+
+      channelIds.length > 0
+        ? prisma.channel.count({
+            where: {
+              workspaceId,
+              id: {
+                in: channelIds,
+              },
+            },
+          })
+        : Promise.resolve(0),
     ]);
 
-    if (themeCount !== parsed.data.themes.length || channelCount !== parsed.data.channels.length) {
+    if (
+      themeCount !== themes.length ||
+      channelCount !== channels.length
+    ) {
       return NextResponse.json(
-        { error: "One or more settings items do not belong to this workspace." },
+        {
+          error:
+            "One or more settings items do not belong to this workspace.",
+        },
         { status: 400 },
       );
     }
 
-    await prisma.$transaction(async (tx) => {
-      for (const theme of parsed.data.themes) {
-        await tx.theme.update({
-          where: { id: theme.id },
+    /*
+     * Use Prisma's array transaction instead of an interactive
+     * transaction with sequential awaits.
+     *
+     * This keeps the updates transactional while avoiding a long-lived
+     * interactive transaction that can close on Vercel/Neon.
+     */
+    const operations = [
+      ...themes.map((theme) =>
+        prisma.theme.update({
+          where: {
+            id: theme.id,
+          },
           data: {
             name: theme.name,
             description: theme.description || null,
             color: theme.color || null,
             isActive: theme.isActive,
           },
-        });
-      }
+        }),
+      ),
 
-      for (const channel of parsed.data.channels) {
-        await tx.channel.update({
-          where: { id: channel.id },
+      ...channels.map((channel) =>
+        prisma.channel.update({
+          where: {
+            id: channel.id,
+          },
           data: {
             name: channel.name,
             isActive: channel.isActive,
           },
-        });
-      }
-    });
+        }),
+      ),
+    ];
 
-    return NextResponse.json({ message: "Workspace settings saved successfully." });
+    if (operations.length > 0) {
+      await prisma.$transaction(operations);
+    }
+
+    return NextResponse.json({
+      message: "Workspace settings saved successfully.",
+    });
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
       return NextResponse.json(
-        { error: "A theme or channel with one of these names already exists in this workspace." },
+        {
+          error:
+            "A theme or channel with one of these names already exists in this workspace.",
+        },
         { status: 409 },
       );
     }
 
-    console.error("Themes and channels bulk save failed:", error);
+    console.error(
+      "Themes and channels bulk save failed:",
+      error,
+    );
+
     return NextResponse.json(
       { error: "Failed to save themes and channels." },
       { status: 500 },
@@ -351,12 +459,18 @@ export async function PATCH(request: Request) {
   const session = await getSession();
 
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    return NextResponse.json(
+      { error: "Unauthorized." },
+      { status: 401 },
+    );
   }
 
   if (!canManage(session.user.role)) {
     return NextResponse.json(
-      { error: "You do not have permission to manage themes or channels." },
+      {
+        error:
+          "You do not have permission to manage themes or channels.",
+      },
       { status: 403 },
     );
   }
@@ -366,38 +480,67 @@ export async function PATCH(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid request body." },
+      { status: 400 },
+    );
   }
 
   const parsed = updateSchema.safeParse(body);
 
   if (!parsed.success) {
     return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "Invalid input." },
+      {
+        error:
+          parsed.error.issues[0]?.message ??
+          "Invalid input.",
+      },
       { status: 400 },
     );
   }
 
-  const { type, id, name, description, color, isActive } = parsed.data;
+  const {
+    type,
+    id,
+    name,
+    description,
+    color,
+    isActive,
+  } = parsed.data;
+
   const workspaceId = session.user.workspaceId;
 
   try {
     if (type === "theme") {
       const existingTheme = await prisma.theme.findFirst({
-        where: { id, workspaceId },
-        select: { id: true },
+        where: {
+          id,
+          workspaceId,
+        },
+        select: {
+          id: true,
+        },
       });
 
       if (!existingTheme) {
-        return NextResponse.json({ error: "Theme not found." }, { status: 404 });
+        return NextResponse.json(
+          { error: "Theme not found." },
+          { status: 404 },
+        );
       }
 
       const theme = await prisma.theme.update({
-        where: { id: existingTheme.id },
+        where: {
+          id: existingTheme.id,
+        },
         data: {
           ...(name !== undefined ? { name } : {}),
-          ...(description !== undefined ? { description: description || null } : {}),
-          ...(color !== undefined ? { color: color || null } : {}),
+          ...(description !== undefined
+            ? { description: description || null }
+            : {}),
+          ...(color !== undefined
+            ? { color: color || null }
+            : {}),
           ...(isActive !== undefined ? { isActive } : {}),
         },
       });
@@ -414,16 +557,26 @@ export async function PATCH(request: Request) {
     }
 
     const existingChannel = await prisma.channel.findFirst({
-      where: { id, workspaceId },
-      select: { id: true },
+      where: {
+        id,
+        workspaceId,
+      },
+      select: {
+        id: true,
+      },
     });
 
     if (!existingChannel) {
-      return NextResponse.json({ error: "Channel not found." }, { status: 404 });
+      return NextResponse.json(
+        { error: "Channel not found." },
+        { status: 404 },
+      );
     }
 
     const channel = await prisma.channel.update({
-      where: { id: existingChannel.id },
+      where: {
+        id: existingChannel.id,
+      },
       data: {
         ...(name !== undefined ? { name } : {}),
         ...(isActive !== undefined ? { isActive } : {}),
@@ -438,14 +591,24 @@ export async function PATCH(request: Request) {
       },
     });
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
       return NextResponse.json(
-        { error: "A theme or channel with this name already exists in this workspace." },
+        {
+          error:
+            "A theme or channel with this name already exists in this workspace.",
+        },
         { status: 409 },
       );
     }
 
-    console.error("Theme or channel update failed:", error);
+    console.error(
+      "Theme or channel update failed:",
+      error,
+    );
+
     return NextResponse.json(
       { error: "Failed to update theme or channel." },
       { status: 500 },
