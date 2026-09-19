@@ -1,14 +1,16 @@
 import { InferenceClient } from "@huggingface/inference";
 
-const apiKey = process.env.HUGGINGFACE_API_KEY;
-
-if (!apiKey) {
-  throw new Error("HUGGINGFACE_API_KEY is not configured.");
-}
-
-const client = new InferenceClient(apiKey);
-
 const EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2";
+
+function getHuggingFaceClient() {
+  const apiKey = process.env.HUGGINGFACE_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("HUGGINGFACE_API_KEY is not configured.");
+  }
+
+  return new InferenceClient(apiKey);
+}
 
 export async function createEmbedding(text: string): Promise<number[]> {
   const input = text.trim();
@@ -16,6 +18,8 @@ export async function createEmbedding(text: string): Promise<number[]> {
   if (!input) {
     throw new Error("Cannot create an embedding from empty text.");
   }
+
+  const client = getHuggingFaceClient();
 
   const result = await client.featureExtraction({
     model: EMBEDDING_MODEL,

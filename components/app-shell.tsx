@@ -43,6 +43,11 @@ const navigationItems = [
     available: true,
   },
   {
+  label: "Feedback Studio",
+  href: "/feedback-studio",
+  available: true,
+},
+  {
     label: "Team",
     href: "/team",
     available: true,
