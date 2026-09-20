@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
+import { generateOtp, hashOtp, otpExpiryDate, enforceOtpRateLimit } from "@/lib/otp";
+import { sendOtpEmail } from "@/lib/email";
 
 const signupSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
@@ -10,54 +12,18 @@ const signupSchema = z.object({
   workspace: z.string().min(1, "Workspace name is required").max(100),
 });
 
-const DEFAULT_THEMES = [
-  {
-    name: "Onboarding",
-    description: "First-time user setup and activation",
-    color: "#6366f1",
-  },
-  {
-    name: "Billing",
-    description: "Invoices, payments, pricing",
-    color: "#f59e0b",
-  },
-  {
-    name: "Performance",
-    description: "Speed and reliability",
-    color: "#ef4444",
-  },
-  {
-    name: "Mobile Experience",
-    description: "Mobile app/web usability",
-    color: "#10b981",
-  },
-  {
-    name: "Integrations",
-    description: "SSO, third-party connections",
-    color: "#8b5cf6",
-  },
-  {
-    name: "Support Response",
-    description: "Customer support quality",
-    color: "#ec4899",
-  },
-];
-
-const DEFAULT_CHANNELS = [
-  "manual",
-  "support_ticket",
-  "app_store_review",
-  "nps_survey",
-  "sales_call",
-  "sales_call_note",
-  "community_post",
-  "email",
-  "website_feedback",
-  "chat",
-  "social",
-  "GOOGLE_FORM",
-];
-
+/**
+ * Step 1 of signup.
+ *
+ * This no longer creates the Workspace/User directly. It validates the
+ * submitted details, hashes the password, stashes that data (never the raw
+ * password) against a one-time code, and emails the code to the user.
+ *
+ * The account is only actually created in
+ * `/api/auth/signup/verify-otp` once the code is confirmed. This keeps the
+ * existing signup behavior (default themes/channels, ADMIN role, hashed
+ * password, workspace isolation) intact — it just runs one step later.
+ */
 export async function POST(req: Request) {
   let body: unknown;
 
@@ -82,7 +48,8 @@ export async function POST(req: Request) {
     );
   }
 
-  const { name, email, password, workspace } = parsed.data;
+  const { name, password, workspace } = parsed.data;
+  const email = parsed.data.email.toLowerCase().trim();
 
   const existing = await prisma.user.findUnique({
     where: { email },
@@ -95,40 +62,40 @@ export async function POST(req: Request) {
     );
   }
 
+  const rate = await enforceOtpRateLimit(email, "SIGNUP");
+
+  if (!rate.allowed) {
+    if (rate.reason === "cooldown") {
+      return NextResponse.json(
+        { error: `Please wait ${rate.waitSeconds}s before requesting another code.` },
+        { status: 429 }
+      );
+    }
+
+    return NextResponse.json(
+      { error: "Too many verification codes requested. Please try again later." },
+      { status: 429 }
+    );
+  }
+
   const passwordHash = await bcrypt.hash(password, 10);
+  const otp = generateOtp();
 
   try {
-    await prisma.$transaction(async (tx) => {
-      const ws = await tx.workspace.create({
-        data: {
-          name: workspace,
-          themes: {
-            create: DEFAULT_THEMES.map((theme) => ({
-              ...theme,
-              isActive: true,
-            })),
-          },
-          channels: {
-            create: DEFAULT_CHANNELS.map((channelName) => ({
-              name: channelName,
-              isActive: true,
-            })),
-          },
-        },
-      });
-
-      await tx.user.create({
-        data: {
-          name,
-          email,
-          passwordHash,
-          role: "ADMIN",
-          workspaceId: ws.id,
-        },
-      });
+    await prisma.otpToken.create({
+      data: {
+        email,
+        purpose: "SIGNUP",
+        otpHash: hashOtp(otp, email),
+        // The raw password is never stored — only its bcrypt hash.
+        payload: { name, email, passwordHash, workspace },
+        expiresAt: otpExpiryDate(),
+      },
     });
+
+    await sendOtpEmail(email, otp, "signup");
   } catch (err) {
-    console.error("Signup transaction failed:", err);
+    console.error("Failed to start signup verification:", err);
 
     return NextResponse.json(
       { error: "Something went wrong. Please try again." },
@@ -137,7 +104,7 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json(
-    { success: true },
-    { status: 201 }
+    { success: true, email },
+    { status: 200 }
   );
 }
