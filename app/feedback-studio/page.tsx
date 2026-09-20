@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-
+import AppShell from "@/components/app-shell";
 import AnalysisSummary from "@/components/feedback-studio/analysis-summary";
 import CsvUploader from "@/components/feedback-studio/csv-uploader";
 import ExportAnalysisButton from "@/components/feedback-studio/export-analysis-button";
@@ -331,7 +331,8 @@ export default function FeedbackStudioPage() {
   }));
 
   return (
-    <main className="min-h-screen bg-[#f7f7fb] px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
+  <AppShell>
+    <div className="min-h-screen bg-[#f7f7fb] px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
         <div className="mb-8">
           <p className="mb-2 text-sm font-semibold uppercase tracking-[0.18em] text-violet-600">
@@ -839,8 +840,9 @@ export default function FeedbackStudioPage() {
               ) : null}
             </section>
           </div>
-        </div>
-      </div>
-    </main>
-  );
+             </div>
+    </div>
+    </div>
+  </AppShell>
+);
 }
