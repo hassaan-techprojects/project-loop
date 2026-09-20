@@ -38,8 +38,13 @@ const navigationItems = [
     available: true,
   },
   {
-  label: "Import Feedback",
-  href: "/import-feedback",
+    label: "Import Feedback",
+    href: "/import-feedback",
+    available: true,
+  },
+  {
+  label: "Feedback Studio",
+  href: "/feedback-studio",
   available: true,
 },
   {
@@ -48,19 +53,19 @@ const navigationItems = [
     available: true,
   },
   {
-  label: "Google Form",
-  href: "/integrations/google-form",
-  available: true,
-},
+    label: "Google Form",
+    href: "/integrations/google-form",
+    available: true,
+  },
   {
     label: "Trends",
     href: "/trends",
-    available: false,
+    available: true,
   },
   {
     label: "Ask LOOP",
     href: "/ask-loop",
-    available: false,
+    available: true,
   },
   {
     label: "Reports",
