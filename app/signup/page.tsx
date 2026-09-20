@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { DM_Sans, Manrope } from "next/font/google";
 
@@ -18,9 +19,11 @@ const manrope = Manrope({
 });
 
 type Status = "idle" | "loading" | "success" | "error";
+type Step = "details" | "otp";
 
 export default function SignupPage() {
   const router = useRouter();
+  const [step, setStep] = useState<Step>("details");
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -29,6 +32,12 @@ export default function SignupPage() {
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
 
+  const [otp, setOtp] = useState("");
+  const [otpStatus, setOtpStatus] = useState<Status>("idle");
+  const [otpError, setOtpError] = useState("");
+
+  // Step 1: validate details and request an email OTP. The account is not
+  // created yet — that only happens after the OTP is verified below.
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -49,22 +58,96 @@ export default function SignupPage() {
         return;
       }
 
-      setStatus("success");
-      setTimeout(() => {
-        router.push("/login");
-      }, 900);
+      setStatus("idle");
+      setStep("otp");
     } catch {
       setError("Network error. Please try again.");
       setStatus("error");
     }
   }
 
+  // Step 2: verify the OTP. Only on success does the server actually
+  // create the Workspace + User. Once created, sign the user in
+  // automatically and send them to the dashboard instead of /login.
+  async function handleVerifyOtp(e: React.FormEvent) {
+    e.preventDefault();
+    setOtpError("");
+    setOtpStatus("loading");
+
+    try {
+      const res = await fetch("/api/auth/signup/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setOtpError(data.error || "Something went wrong. Please try again.");
+        setOtpStatus("error");
+        return;
+      }
+
+      setOtpStatus("success");
+
+      const signInResult = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
+
+      if (!signInResult?.ok || signInResult?.error) {
+        // Account was created successfully even if auto sign-in somehow
+        // fails — don't strand the user, just send them to login instead.
+        router.push("/login");
+        return;
+      }
+
+      // Force a full navigation so the session is available before the
+      // dashboard loads (same pattern used on the login page).
+      window.location.href = "/dashboard";
+    } catch {
+      setOtpError("Network error. Please try again.");
+      setOtpStatus("error");
+    }
+  }
+
+  async function handleResendOtp() {
+    setOtpError("");
+    setOtpStatus("loading");
+
+    try {
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password, workspace }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setOtpError(data.error || "Could not resend the code.");
+        setOtpStatus("error");
+        return;
+      }
+
+      setOtpStatus("idle");
+    } catch {
+      setOtpError("Network error. Please try again.");
+      setOtpStatus("error");
+    }
+  }
+
   const buttonLabel =
-    status === "loading"
-      ? "Creating workspace…"
-      : status === "success"
+    status === "loading" ? "Sending code…" : "Continue";
+
+  const otpButtonLabel =
+    otpStatus === "loading"
+      ? "Verifying…"
+      : otpStatus === "success"
       ? "Workspace created ✓"
-      : "Create workspace";
+      : "Verify & create workspace";
 
   return (
     <div className={`${dmSans.variable} ${manrope.variable} page`}>
@@ -103,94 +186,162 @@ export default function SignupPage() {
 
         <section className="form-area">
           <div className="form-wrap">
-            <div className="eyebrow">Get started with LOOP</div>
-            <h1>Create your workspace</h1>
-            <p className="intro">
-              Set up your workspace and bring your team&apos;s customer
-              feedback into one place.
-            </p>
+            {step === "details" ? (
+              <>
+                <div className="eyebrow">Get started with LOOP</div>
+                <h1>Create your workspace</h1>
+                <p className="intro">
+                  Set up your workspace and bring your team&apos;s customer
+                  feedback into one place.
+                </p>
 
-            <form onSubmit={handleSubmit}>
-              <div className="field">
-                <label htmlFor="name">Full name</label>
-                <input
-                  id="name"
-                  name="name"
-                  type="text"
-                  placeholder="Your full name"
-                  autoComplete="name"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </div>
+                <form onSubmit={handleSubmit}>
+                  <div className="field">
+                    <label htmlFor="name">Full name</label>
+                    <input
+                      id="name"
+                      name="name"
+                      type="text"
+                      placeholder="Your full name"
+                      autoComplete="name"
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                  </div>
 
-              <div className="field">
-                <label htmlFor="email">Work email</label>
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  placeholder="you@company.com"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
+                  <div className="field">
+                    <label htmlFor="email">Work email</label>
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      placeholder="you@company.com"
+                      autoComplete="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
 
-              <div className="field">
-                <label htmlFor="password">Password</label>
-                <div className="password">
-                  <input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Create a password"
-                    autoComplete="new-password"
-                    required
-                    minLength={8}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
+                  <div className="field">
+                    <label htmlFor="password">Password</label>
+                    <div className="password">
+                      <input
+                        id="password"
+                        name="password"
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Create a password"
+                        autoComplete="new-password"
+                        required
+                        minLength={8}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                      />
+                      <button
+                        className="show"
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                      >
+                        {showPassword ? "Hide" : "Show"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label htmlFor="workspace">Workspace name</label>
+                    <input
+                      id="workspace"
+                      name="workspace"
+                      type="text"
+                      placeholder="e.g. Acme Inc."
+                      autoComplete="organization"
+                      required
+                      value={workspace}
+                      onChange={(e) => setWorkspace(e.target.value)}
+                    />
+                  </div>
+
+                  {error && <p className="form-error">{error}</p>}
+
                   <button
-                    className="show"
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
+                    className="create"
+                    type="submit"
+                    disabled={status === "loading"}
                   >
-                    {showPassword ? "Hide" : "Show"}
+                    {buttonLabel}
+                  </button>
+                </form>
+
+                <div className="signin">
+                  Already have an account? <Link href="/login">Sign in</Link>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="eyebrow">Verify your email</div>
+                <h1>Enter your code</h1>
+                <p className="intro">
+                  We sent a 6-digit code to <strong>{email}</strong>. Enter it
+                  below to finish creating your workspace.
+                </p>
+
+                <form onSubmit={handleVerifyOtp}>
+                  <div className="field">
+                    <label htmlFor="otp">Verification code</label>
+                    <input
+                      id="otp"
+                      name="otp"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      placeholder="123456"
+                      maxLength={6}
+                      required
+                      value={otp}
+                      onChange={(e) =>
+                        setOtp(e.target.value.replace(/\D/g, ""))
+                      }
+                    />
+                  </div>
+
+                  {otpError && <p className="form-error">{otpError}</p>}
+
+                  <button
+                    className="create"
+                    type="submit"
+                    disabled={otpStatus === "loading" || otpStatus === "success"}
+                  >
+                    {otpButtonLabel}
+                  </button>
+                </form>
+
+                <div className="signin">
+                  Didn&apos;t get a code?{" "}
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={handleResendOtp}
+                    disabled={otpStatus === "loading"}
+                  >
+                    Resend code
+                  </button>
+                  {" · "}
+                  <button
+                    type="button"
+                    className="link-btn"
+                    onClick={() => {
+                      setStep("details");
+                      setOtp("");
+                      setOtpError("");
+                      setOtpStatus("idle");
+                    }}
+                  >
+                    Edit details
                   </button>
                 </div>
-              </div>
-
-              <div className="field">
-                <label htmlFor="workspace">Workspace name</label>
-                <input
-                  id="workspace"
-                  name="workspace"
-                  type="text"
-                  placeholder="e.g. Acme Inc."
-                  autoComplete="organization"
-                  required
-                  value={workspace}
-                  onChange={(e) => setWorkspace(e.target.value)}
-                />
-              </div>
-
-              {error && <p className="form-error">{error}</p>}
-
-              <button
-                className="create"
-                type="submit"
-                disabled={status === "loading" || status === "success"}
-              >
-                {buttonLabel}
-              </button>
-            </form>
-
-            <div className="signin">
-              Already have an account? <Link href="/login">Sign in</Link>
-            </div>
+              </>
+            )}
           </div>
         </section>
       </main>
@@ -532,6 +683,25 @@ export default function SignupPage() {
 
         .signin :global(a:hover) {
           text-decoration: underline;
+        }
+
+        .link-btn {
+          border: 0;
+          background: none;
+          padding: 0;
+          font: inherit;
+          color: #111;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .link-btn:hover:not(:disabled) {
+          text-decoration: underline;
+        }
+
+        .link-btn:disabled {
+          opacity: 0.6;
+          cursor: default;
         }
 
         @media (max-width: 900px) {

@@ -140,6 +140,43 @@ enum Status {
   ACTIONED
 }
 
+model OtpToken {
+  id         String     @id @default(cuid())
+  email      String
+  purpose    OtpPurpose
+  otpHash    String
+  // For SIGNUP only: the pending signup data (name, email, hashed password,
+  // workspace name) so the User/Workspace are created only after the OTP
+  // is verified. Never stores the raw password.
+  payload    Json?
+  attempts   Int        @default(0)
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([email, purpose])
+  @@index([email, purpose, consumedAt])
+}
+
+enum OtpPurpose {
+  SIGNUP
+  PASSWORD_RESET
+}
+
+// Short-lived, single-use credential issued only after a PASSWORD_RESET OTP
+// has been verified. The raw token is shown to the client once and never
+// stored; only its hash is kept here.
+model PasswordResetToken {
+  id         String    @id @default(cuid())
+  email      String
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([email])
+}
+
 model GoogleFormIntegration {
   id           String    @id @default(cuid())
   workspaceId  String    @unique
