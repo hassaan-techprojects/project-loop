@@ -95,7 +95,7 @@ const navigationItems: {
   {
     label: "Reports",
     href: "/reports",
-    available: false,
+    available: true,
     icon: "reports",
   },
   {

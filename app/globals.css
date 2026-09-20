@@ -94,3 +94,71 @@ textarea,
 select {
   font: inherit;
 }
+
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+  }
+
+  body {
+    color: #111111 !important;
+  }
+
+  aside,
+  header,
+  nav {
+    display: none !important;
+  }
+
+  button,
+  a[href="/reports"] {
+    display: none !important;
+  }
+
+  main {
+    min-height: auto !important;
+    padding: 0 !important;
+  }
+
+  main > div {
+    max-width: none !important;
+  }
+
+  section,
+  article {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    box-shadow: none !important;
+  }
+
+  h1,
+  h2,
+  h3,
+  p,
+  span,
+  li,
+  blockquote {
+    color: #111111 !important;
+  }
+
+  section {
+    border-color: #d1d5db !important;
+    background: #ffffff !important;
+  }
+
+  article {
+    border-color: #d1d5db !important;
+    background: #ffffff !important;
+  }
+
+  a {
+    color: #111111 !important;
+    text-decoration: none !important;
+  }
+}
