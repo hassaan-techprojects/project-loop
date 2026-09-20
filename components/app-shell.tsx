@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -298,15 +299,20 @@ export default function AppShell({ children }: AppShellProps) {
         }}
       >
         <div className="flex min-h-14 items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             <Link
               href="/dashboard"
-              className="shrink-0 text-sm font-semibold tracking-[0.28em] transition-opacity hover:opacity-80"
-              style={{
-                color: "var(--sidebar-text)",
-              }}
+              aria-label="LOOP Dashboard"
+              className="flex shrink-0 items-center transition-opacity hover:opacity-80"
             >
-              LOOP
+              <Image
+                src="/loop-logo.png"
+                alt="LOOP"
+                width={120}
+                height={40}
+                priority
+                className="h-9 w-auto max-w-[120px] object-contain sm:h-10 sm:max-w-[120px]"
+              />
             </Link>
 
             <button
