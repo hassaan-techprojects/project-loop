@@ -386,7 +386,13 @@ export default function AskLoopPage() {
 
   return (
     <AppShell>
-      <main className="flex h-full min-h-0 overflow-hidden">
+      <main
+        className="flex h-full min-h-0 overflow-hidden"
+        style={{
+          backgroundColor: "#0D0B14",
+          color: "#F1EEF9",
+        }}
+      >
         {/* Desktop conversation history */}
         <aside className="hidden w-72 shrink-0 border-r border-white/10 bg-black/10 lg:flex lg:flex-col">
           <div className="border-b border-white/10 p-4">

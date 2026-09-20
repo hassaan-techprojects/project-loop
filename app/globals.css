@@ -1,24 +1,56 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #F7F7FB;
-  --surface: #FFFFFF;
-  --surface-muted: #F0EEF9;
-  --border: #E5E3EC;
-  --text: #171321;
-  --text-muted: #6F6A80;
-  --primary: #6D5AE0;
-  --primary-hover: #5A47D1;
-  --primary-gradient-from: #7C6AE8;
-  --primary-gradient-to: #4E3DC0;
-  --positive: #1F9D6D;
-  --negative: #DC4C5C;
-  --neutral: #C68A2E;
-  --sidebar-bg: #14101F;
-  --sidebar-text: #EDEAFB;
-  --sidebar-muted: #9C93C2;
+  /*
+   * LOOP LIGHT MODE
+   *
+   * Buttercream  #D1CFC9  - main page background
+   * Ivory       #BDC4D4  - cards / elevated surfaces
+   * Midnight    #1C2E4A  - primary actions / active states
+   * Dusty Blue  #52677D  - secondary text / borders
+   * Deep Navy   #0F1A2B  - primary text / navigation
+   */
+
+  --bg: #D1CFC9;
+
+  --surface: #BDC4D4;
+  --surface-elevated: #D9DDE5;
+  --surface-muted: #AEB7C6;
+
+  --border: #52677D;
+
+  --text: #0F1A2B;
+  --text-secondary: #52677D;
+  --text-muted: #52677D;
+
+  --primary: #1C2E4A;
+  --primary-hover: #0F1A2B;
+  --primary-soft: #AEB7C6;
+
+  --primary-gradient-from: #1C2E4A;
+  --primary-gradient-to: #0F1A2B;
+
+  /*
+   * Semantic states
+   */
+  --positive: #1C2E4A;
+  --negative: #52677D;
+  --neutral: #52677D;
+
+  /*
+   * Navigation
+   */
+  --sidebar-bg: #0F1A2B;
+  --sidebar-text: #F1F3F6;
+  --sidebar-muted: #AEB7C6;
 }
 
+/*
+ * DARK MODE
+ *
+ * Existing LOOP dark palette.
+ * DO NOT CHANGE.
+ */
 .dark {
   --bg: #0D0B14;
   --surface: #17141F;
@@ -38,12 +70,27 @@
   --sidebar-muted: #8A81AC;
 }
 
+html {
+  background-color: var(--bg);
+}
+
 body {
+  margin: 0;
   background-color: var(--bg);
   color: var(--text);
   font-family: var(--font-sans), sans-serif;
 }
 
-h1, h2, h3, h4 {
+h1,
+h2,
+h3,
+h4 {
   font-family: var(--font-display), serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
 }
