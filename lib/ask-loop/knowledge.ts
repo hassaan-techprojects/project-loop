@@ -272,6 +272,120 @@ const LOOP_KNOWLEDGE: LoopKnowledgeEntry[] = [
       "customer insights",
     ],
   },
+
+  {
+    id: "feedback-studio",
+    title: "Feedback Studio",
+    content:
+      "LOOP Feedback Studio provides AI-assisted analysis workflows for feedback batches. It includes CSV upload and analysis-oriented views for understanding a set of feedback without changing the workspace feedback dataset unless the surrounding workflow explicitly imports it.",
+    keywords: [
+      "feedback studio",
+      "studio",
+      "analyze batch",
+      "batch analysis",
+      "csv analysis",
+      "feedback analysis",
+    ],
+  },
+
+  {
+    id: "import-feedback",
+    title: "Import Feedback",
+    content:
+      "LOOP has a dedicated Import Feedback workflow for bringing feedback data into a workspace. CSV is the supported bulk-import format in the application knowledge. Imported records become part of the workspace feedback dataset and can subsequently participate in analytics, themes, trends, and Ask LOOP investigation.",
+    keywords: [
+      "import feedback",
+      "feedback import",
+      "bulk import",
+      "upload feedback",
+      "import page",
+      "csv upload",
+    ],
+  },
+
+  {
+    id: "reports",
+    title: "Voice of Customer reports",
+    content:
+      "LOOP includes a Reports area for Voice-of-Customer reporting. Reports are associated with a workspace, have a title and reporting period, and contain generated report data. Ask LOOP can inspect recent report metadata when a user asks about the workspace's reporting history.",
+    keywords: [
+      "reports",
+      "report history",
+      "voice of customer",
+      "voc report",
+      "reporting",
+      "generated report",
+    ],
+  },
+
+  {
+    id: "authentication",
+    title: "Authentication and account flows",
+    content:
+      "LOOP includes login and signup flows and supports password recovery using OTP verification and a password-reset token. Authentication is workspace-scoped, and server-side APIs use the authenticated session to protect workspace data.",
+    keywords: [
+      "login",
+      "sign in",
+      "signup",
+      "sign up",
+      "forgot password",
+      "password reset",
+      "otp",
+      "account",
+      "authentication",
+    ],
+  },
+
+  {
+    id: "ask-loop-documents",
+    title: "Ask LOOP uploaded documents",
+    content:
+      "Ask LOOP supports attaching CSV and PDF documents to a conversation. The application extracts readable text from the uploaded file and sends that document text as additional conversational evidence. The workspace feedback dataset remains available alongside the document, so a question can compare the uploaded material with workspace feedback. Image-only or scanned PDFs do not currently yield readable text through the text extractor.",
+    keywords: [
+      "ask loop csv",
+      "ask loop pdf",
+      "upload pdf",
+      "upload csv",
+      "attached document",
+      "uploaded document",
+      "compare pdf",
+      "compare csv",
+    ],
+  },
+
+  {
+    id: "settings-theme-channel",
+    title: "Settings: themes and channels",
+    content:
+      "The Settings area includes management for workspace themes and channels. Themes are workspace-specific named categories with descriptions, colors, and active state. Channels are workspace-specific named sources with active state. These configuration records are separate from individual feedback records but are used by feedback organization and analytics.",
+    keywords: [
+      "settings themes",
+      "settings channels",
+      "theme management",
+      "channel management",
+      "configure theme",
+      "configure channel",
+      "theme description",
+      "channel source",
+    ],
+  },
+
+  {
+    id: "team-page",
+    title: "Team management",
+    content:
+      "LOOP has a Team area for workspace members and role-based access. Workspace users have ADMIN, ANALYST, or VIEWER roles. Workspace membership is tied to the authenticated workspace and server-side APIs enforce access and role permissions.",
+    keywords: [
+      "team page",
+      "manage team",
+      "workspace members",
+      "member roles",
+      "admin role",
+      "analyst role",
+      "viewer role",
+      "role based access",
+    ],
+  },
 ];
 
 function normalize(text: string): string {

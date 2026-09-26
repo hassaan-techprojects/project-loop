@@ -5,6 +5,7 @@ import {
   KeyboardEvent,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import AppShell from "@/components/app-shell";
@@ -29,17 +30,33 @@ type Message = {
   createdAt: string;
 };
 
+type ConversationAttachment = {
+  name: string;
+  type: "CSV" | "PDF";
+  text: string;
+  size: number;
+};
+
 type Conversation = {
   id: string;
   title: string;
   messages: Message[];
   updatedAt: string;
+  attachment?: ConversationAttachment;
 };
 
 type AskLoopResponse = {
   answer?: string;
   citations?: Citation[];
   toolsUsed?: string[];
+  error?: string;
+};
+
+type UploadResponse = {
+  name?: string;
+  type?: "CSV" | "PDF";
+  size?: number;
+  text?: string;
   error?: string;
 };
 
@@ -149,6 +166,7 @@ function ToolBadge({ tool }: { tool: string }) {
     get_workspace_themes: "Themes",
     get_workspace_channels: "Channels",
     search_loop_knowledge: "LOOP knowledge",
+    uploaded_document: "Uploaded document",
   };
 
   return (
@@ -180,6 +198,100 @@ function LoadingDots() {
   );
 }
 
+function ConversationMenu({
+  open,
+  onToggle,
+  onRename,
+  onDelete,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="relative z-50 shrink-0">
+      <button
+        type="button"
+        aria-label="Conversation options"
+        aria-expanded={open}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggle();
+        }}
+        className={`flex h-7 w-7 items-center justify-center rounded-lg text-sm leading-none transition ${
+          open
+            ? "bg-white/10 text-white"
+            : "text-white/25 hover:bg-white/5 hover:text-white/70"
+        }`}
+      >
+        ⋯
+      </button>
+
+      {open && (
+        <div
+          className="absolute right-0 top-8 z-[100] w-32 overflow-hidden rounded-xl border border-white/10 bg-[#11101a] p-1 shadow-2xl shadow-black/40"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onRename();
+            }}
+            className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs text-white/65 transition hover:bg-white/5 hover:text-white"
+          >
+            Rename
+          </button>
+
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete();
+            }}
+            className="flex w-full items-center rounded-lg px-3 py-2 text-left text-xs text-red-300/80 transition hover:bg-red-400/10 hover:text-red-300"
+          >
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+async function readJsonResponse<T>(
+  response: Response
+): Promise<T> {
+  const raw = await response.text();
+
+  if (!raw.trim()) {
+    throw new Error(
+      `The server returned an empty response (${response.status} ${response.statusText || "Unknown error"}).`
+    );
+  }
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    const cleaned = raw
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    const preview =
+      cleaned.length > 300
+        ? `${cleaned.slice(0, 300)}…`
+        : cleaned;
+
+    throw new Error(
+      `The server returned an invalid response (${response.status}).${
+        preview ? ` ${preview}` : ""
+      }`
+    );
+  }
+}
+
 export default function AskLoopPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState("");
@@ -190,6 +302,16 @@ export default function AskLoopPage() {
   const [evidenceOpen, setEvidenceOpen] = useState<Record<string, boolean>>(
     {}
   );
+  const [openConversationMenuId, setOpenConversationMenuId] = useState<
+    string | null
+  >(null);
+  const [renamingConversationId, setRenamingConversationId] = useState<
+    string | null
+  >(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [uploadingFile, setUploadingFile] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const activeConversation = useMemo(
     () =>
@@ -263,6 +385,8 @@ export default function AskLoopPage() {
     setQuestion("");
     setError("");
     setEvidenceOpen({});
+    setOpenConversationMenuId(null);
+    setRenamingConversationId(null);
     setMobileHistoryOpen(false);
   }
 
@@ -270,11 +394,210 @@ export default function AskLoopPage() {
     setActiveConversationId(conversationId);
     setError("");
     setEvidenceOpen({});
+    setOpenConversationMenuId(null);
+    setRenamingConversationId(null);
+    setQuestion("");
     setMobileHistoryOpen(false);
   }
 
   function handleSuggestedQuestion(value: string) {
     setQuestion(value);
+  }
+
+  function startRename(conversation: Conversation) {
+    setOpenConversationMenuId(null);
+    setRenamingConversationId(conversation.id);
+    setRenameValue(conversation.title);
+  }
+
+  function cancelRename() {
+    setRenamingConversationId(null);
+    setRenameValue("");
+  }
+
+  function saveRename(conversationId: string) {
+    const cleaned = renameValue.replace(/\s+/g, " ").trim();
+
+    if (!cleaned) {
+      return;
+    }
+
+    updateConversation(conversationId, (conversation) => ({
+      ...conversation,
+      title: truncateTitle(cleaned),
+      updatedAt: new Date().toISOString(),
+    }));
+
+    cancelRename();
+  }
+
+  function handleRenameKeyDown(
+    event: KeyboardEvent<HTMLInputElement>,
+    conversationId: string
+  ) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      saveRename(conversationId);
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelRename();
+    }
+  }
+
+  function handleDeleteConversation(conversationId: string) {
+    setOpenConversationMenuId(null);
+
+    const conversation = conversations.find(
+      (item) => item.id === conversationId
+    );
+
+    if (!conversation) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete "${conversation.title}"? This will remove this conversation and its messages from this browser.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const remaining = conversations.filter(
+      (item) => item.id !== conversationId
+    );
+
+    if (remaining.length === 0) {
+      const newConversation = createConversation();
+
+      setConversations([newConversation]);
+      setActiveConversationId(newConversation.id);
+    } else {
+      setConversations(remaining);
+
+      if (activeConversationId === conversationId) {
+        const nextConversation = [...remaining].sort(
+          (a, b) =>
+            new Date(b.updatedAt).getTime() -
+            new Date(a.updatedAt).getTime()
+        )[0];
+
+        setActiveConversationId(nextConversation.id);
+      }
+    }
+
+    setQuestion("");
+    setError("");
+    setEvidenceOpen({});
+    setRenamingConversationId(null);
+  }
+
+  function openFilePicker() {
+    if (loading || uploadingFile) {
+      return;
+    }
+
+    fileInputRef.current?.click();
+  }
+
+  async function handleFileSelected(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (!file || !activeConversation) {
+      return;
+    }
+
+    const isCsv =
+      file.type === "text/csv" ||
+      file.name.toLowerCase().endsWith(".csv");
+
+    const isPdf =
+      file.type === "application/pdf" ||
+      file.name.toLowerCase().endsWith(".pdf");
+
+    if (!isCsv && !isPdf) {
+      setError("Please upload a CSV or PDF file.");
+      return;
+    }
+
+    setUploadingFile(true);
+    setError("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch("/api/ask-loop/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await readJsonResponse<UploadResponse>(
+        response
+      );
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ??
+            `Unable to read the uploaded file (${response.status}).`
+        );
+      }
+
+      if (
+        !data.text ||
+        !data.name ||
+        !data.type ||
+        typeof data.size !== "number"
+      ) {
+        throw new Error(
+          "The uploaded file did not contain readable content."
+        );
+      }
+
+      const attachment: ConversationAttachment = {
+        name: data.name,
+        type: data.type,
+        text: data.text,
+        size: data.size,
+      };
+
+      updateConversation(activeConversation.id, (conversation) => ({
+        ...conversation,
+        attachment,
+        updatedAt: new Date().toISOString(),
+      }));
+    } catch (uploadError) {
+      const message =
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Unable to read the uploaded file.";
+
+      setError(message);
+    } finally {
+      setUploadingFile(false);
+    }
+  }
+
+  function removeAttachment() {
+    if (!activeConversation) {
+      return;
+    }
+
+    updateConversation(activeConversation.id, (conversation) => {
+      const updated = { ...conversation };
+      delete updated.attachment;
+
+      return {
+        ...updated,
+        updatedAt: new Date().toISOString(),
+      };
+    });
   }
 
   async function handleSubmit(event?: FormEvent<HTMLFormElement>) {
@@ -324,10 +647,19 @@ export default function AskLoopPage() {
         body: JSON.stringify({
           question: trimmedQuestion,
           previousMessages,
+          attachment: activeConversation.attachment
+            ? {
+                name: activeConversation.attachment.name,
+                type: activeConversation.attachment.type,
+                text: activeConversation.attachment.text,
+              }
+            : undefined,
         }),
       });
 
-      const data = (await response.json()) as AskLoopResponse;
+      const data = await readJsonResponse<AskLoopResponse>(
+        response
+      );
 
       if (!response.ok) {
         throw new Error(
@@ -384,6 +716,110 @@ export default function AskLoopPage() {
       new Date(a.updatedAt).getTime()
   );
 
+  function renderConversationItem(conversation: Conversation) {
+    const active = conversation.id === activeConversationId;
+    const isRenaming = renamingConversationId === conversation.id;
+    const menuOpen = openConversationMenuId === conversation.id;
+
+    return (
+      <div
+        key={conversation.id}
+        className={`relative rounded-xl border transition ${
+          active
+            ? "border-violet-400/20 bg-violet-500/10"
+            : "border-transparent hover:border-white/10 hover:bg-white/[0.03]"
+        }`}
+      >
+        {isRenaming ? (
+          <div className="p-2.5">
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              onKeyDown={(event) =>
+                handleRenameKeyDown(event, conversation.id)
+              }
+              maxLength={42}
+              className="w-full rounded-lg border border-violet-400/20 bg-black/20 px-2.5 py-2 text-sm text-white outline-none placeholder:text-white/20 focus:border-violet-400/40"
+            />
+
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelRename}
+                className="rounded-lg px-2.5 py-1.5 text-[11px] text-white/35 transition hover:bg-white/5 hover:text-white/70"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={() => saveRename(conversation.id)}
+                disabled={!renameValue.trim()}
+                className="rounded-lg bg-violet-600 px-2.5 py-1.5 text-[11px] font-medium text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-30"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-start">
+            <button
+              type="button"
+              onClick={() =>
+                handleSelectConversation(conversation.id)
+              }
+              className="min-w-0 flex-1 px-3 py-3 text-left"
+            >
+              <p
+                className={`truncate pr-1 text-sm ${
+                  active
+                    ? "font-medium text-white"
+                    : "text-white/60"
+                }`}
+              >
+                {conversation.title}
+              </p>
+
+              <div className="mt-1 flex min-w-0 items-center gap-2">
+                <p className="text-[11px] text-white/25">
+                  {conversation.messages.length === 0
+                    ? "No messages yet"
+                    : `${conversation.messages.length} message${
+                        conversation.messages.length === 1
+                          ? ""
+                          : "s"
+                      }`}
+                </p>
+
+                {conversation.attachment && (
+                  <span className="truncate text-[10px] text-violet-300/50">
+                    · {conversation.attachment.name}
+                  </span>
+                )}
+              </div>
+            </button>
+
+            <div className="relative z-50 pr-2 pt-2.5">
+              <ConversationMenu
+                open={menuOpen}
+                onToggle={() =>
+                  setOpenConversationMenuId(
+                    menuOpen ? null : conversation.id
+                  )
+                }
+                onRename={() => startRename(conversation)}
+                onDelete={() =>
+                  handleDeleteConversation(conversation.id)
+                }
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <AppShell>
       <main
@@ -406,7 +842,7 @@ export default function AskLoopPage() {
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-3">
+          <div className="flex-1 overflow-y-auto overflow-x-visible p-3">
             <div className="mb-3 px-2">
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/25">
                 Conversations
@@ -414,45 +850,7 @@ export default function AskLoopPage() {
             </div>
 
             <div className="space-y-1.5">
-              {sortedConversations.map((conversation) => {
-                const active =
-                  conversation.id === activeConversationId;
-
-                return (
-                  <button
-                    key={conversation.id}
-                    type="button"
-                    onClick={() =>
-                      handleSelectConversation(conversation.id)
-                    }
-                    className={`w-full rounded-xl border px-3 py-3 text-left transition ${
-                      active
-                        ? "border-violet-400/20 bg-violet-500/10"
-                        : "border-transparent hover:border-white/10 hover:bg-white/[0.03]"
-                    }`}
-                  >
-                    <p
-                      className={`truncate text-sm ${
-                        active
-                          ? "font-medium text-white"
-                          : "text-white/60"
-                      }`}
-                    >
-                      {conversation.title}
-                    </p>
-
-                    <p className="mt-1 text-[11px] text-white/25">
-                      {conversation.messages.length === 0
-                        ? "No messages yet"
-                        : `${conversation.messages.length} message${
-                            conversation.messages.length === 1
-                              ? ""
-                              : "s"
-                          }`}
-                    </p>
-                  </button>
-                );
-              })}
+              {sortedConversations.map(renderConversationItem)}
             </div>
           </div>
 
@@ -513,41 +911,9 @@ export default function AskLoopPage() {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-3 pb-4">
+              <div className="flex-1 overflow-y-auto overflow-x-visible px-3 pb-4">
                 <div className="space-y-1.5">
-                  {sortedConversations.map((conversation) => {
-                    const active =
-                      conversation.id === activeConversationId;
-
-                    return (
-                      <button
-                        key={conversation.id}
-                        type="button"
-                        onClick={() =>
-                          handleSelectConversation(conversation.id)
-                        }
-                        className={`w-full rounded-xl border px-3 py-3 text-left transition ${
-                          active
-                            ? "border-violet-400/20 bg-violet-500/10"
-                            : "border-transparent hover:border-white/10 hover:bg-white/[0.03]"
-                        }`}
-                      >
-                        <p
-                          className={`truncate text-sm ${
-                            active
-                              ? "font-medium text-white"
-                              : "text-white/60"
-                          }`}
-                        >
-                          {conversation.title}
-                        </p>
-
-                        <p className="mt-1 text-[11px] text-white/25">
-                          {conversation.messages.length} messages
-                        </p>
-                      </button>
-                    );
-                  })}
+                  {sortedConversations.map(renderConversationItem)}
                 </div>
               </div>
             </aside>
@@ -897,6 +1263,55 @@ export default function AskLoopPage() {
 
                   <div className="absolute bottom-3 left-4 right-4 flex items-center justify-between gap-3 sm:left-5 sm:right-5">
                     <div className="flex min-w-0 items-center gap-2">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".csv,.pdf,text/csv,application/pdf"
+                        onChange={handleFileSelected}
+                        className="hidden"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={openFilePicker}
+                        disabled={loading || uploadingFile}
+                        aria-label="Attach CSV or PDF"
+                        title="Attach CSV or PDF"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 text-base font-medium text-white/45 transition hover:border-violet-400/20 hover:bg-violet-500/5 hover:text-violet-300 disabled:cursor-not-allowed disabled:opacity-30"
+                      >
+                        {uploadingFile ? (
+                          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/20 border-t-violet-300" />
+                        ) : (
+                          "+"
+                        )}
+                      </button>
+
+                      {activeConversation?.attachment ? (
+                        <div className="flex min-w-0 max-w-[230px] items-center gap-2 rounded-lg border border-violet-400/10 bg-violet-500/5 px-2.5 py-1.5">
+                          <span className="shrink-0 rounded bg-violet-400/10 px-1.5 py-0.5 text-[9px] font-semibold text-violet-300">
+                            {activeConversation.attachment.type}
+                          </span>
+
+                          <span className="truncate text-[10px] text-white/45">
+                            {activeConversation.attachment.name}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={removeAttachment}
+                            disabled={loading}
+                            aria-label="Remove attachment"
+                            className="shrink-0 text-xs text-white/25 transition hover:text-white/70"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="hidden text-[10px] text-white/20 sm:inline">
+                          CSV or PDF
+                        </span>
+                      )}
+
                       <span className="hidden text-[10px] text-white/20 sm:inline">
                         Enter to ask
                       </span>

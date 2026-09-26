@@ -18,9 +18,17 @@ const askLoopSchema = z.object({
         content: z.string().trim().min(1).max(5000),
       })
     )
-    .max(10)
+    .max(12)
     .optional()
     .default([]),
+
+  attachment: z
+    .object({
+      name: z.string().trim().min(1).max(255),
+      type: z.enum(["CSV", "PDF"]),
+      text: z.string().min(1).max(60000),
+    })
+    .optional(),
 });
 
 export async function POST(request: Request) {
@@ -28,42 +36,27 @@ export async function POST(request: Request) {
     const session = await auth();
 
     if (!session?.user?.workspaceId) {
-      return NextResponse.json(
-        {
-          error: "Unauthorized.",
-        },
-        {
-          status: 401,
-        }
-      );
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
     }
 
     const body: unknown = await request.json();
-
     const validation = askLoopSchema.safeParse(body);
 
     if (!validation.success) {
       return NextResponse.json(
         {
           error:
-            validation.error.issues[0]?.message ??
-            "Invalid request.",
+            validation.error.issues[0]?.message ?? "Invalid request.",
         },
-        {
-          status: 400,
-        }
+        { status: 400 }
       );
     }
 
-    const {
-      question,
-      previousMessages,
-    } = validation.data;
-
     const result = await runAskLoopAgent(
       session.user.workspaceId,
-      question,
-      previousMessages
+      validation.data.question,
+      validation.data.previousMessages,
+      validation.data.attachment
     );
 
     return NextResponse.json({
@@ -81,9 +74,7 @@ export async function POST(request: Request) {
             ? error.message
             : "An unexpected error occurred while processing your question.",
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }

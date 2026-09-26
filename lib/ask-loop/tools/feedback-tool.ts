@@ -1,9 +1,11 @@
-import { searchWorkspaceFeedback } from "@/lib/feedback-retrieval";
+import {
+  investigateWorkspaceFeedback,
+} from "@/lib/feedback-retrieval";
 
 export async function searchFeedbackTool(
   workspaceId: string,
   question: string,
-  limit = 8
+  limit = 12
 ) {
   if (!workspaceId) {
     throw new Error("Workspace ID is required.");
@@ -15,22 +17,12 @@ export async function searchFeedbackTool(
     throw new Error("Feedback search question is required.");
   }
 
-  const safeLimit = Math.min(Math.max(limit, 1), 20);
-
-  const results = await searchWorkspaceFeedback(
+  const safeLimit = Math.min(Math.max(limit, 1), 30);
+  const investigation = await investigateWorkspaceFeedback(
     workspaceId,
     trimmedQuestion,
     safeLimit
   );
 
-  return results.map((feedback) => ({
-    id: feedback.id,
-    content: feedback.content,
-    channel: feedback.channel,
-    customerLabel: feedback.customerLabel,
-    sentiment: feedback.sentiment,
-    status: feedback.status,
-    createdAt: feedback.createdAt,
-    similarity: feedback.similarity,
-  }));
+  return investigation;
 }
