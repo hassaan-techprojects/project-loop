@@ -58,7 +58,3 @@ LOOP helps teams move from scattered customer feedback to clear insights and inf
 Listen to your customers.  
 Understand what matters.  
 Act with confidence.
----
-pnpm dev
-# or
-bun dev
