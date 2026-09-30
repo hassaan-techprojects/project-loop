@@ -997,102 +997,58 @@ export async function POST(
         ),
       );
 
-    const importedCount =
-      await prisma.$transaction(
-        async (tx) => {
-          let count = 0;
+    const feedbackRows = correctedRows.map((row) => ({
+      id: crypto.randomUUID(),
+      content: row.content.trim(),
+      channel:
+        activeChannelMap.get(
+          row.channel.trim().toLowerCase(),
+        ) ?? row.channel.trim(),
+      customerLabel: row.customerLabel.trim(),
+      sourceRef: row.sourceRef.trim() || null,
+      sentiment: row.sentiment as
+        | "POS"
+        | "NEU"
+        | "NEG",
+      sentimentScore: null,
+      status: "NEW" as const,
+      workspaceId,
+    }));
 
-          for (
-            const row of correctedRows
-          ) {
-            const canonicalChannel =
-              activeChannelMap.get(
-                row.channel
-                  .trim()
-                  .toLowerCase(),
-              );
+    const feedbackThemeRows = correctedRows.map(
+      (row, index) => {
+        const canonicalTheme =
+          activeThemeMap.get(
+            row.themeName.trim().toLowerCase(),
+          );
 
-            const canonicalTheme =
-              activeThemeMap.get(
-                row.themeName
-                  .trim()
-                  .toLowerCase(),
-              );
+        if (!canonicalTheme) {
+          throw new Error(
+            "A selected theme is no longer available.",
+          );
+        }
 
-            if (
-              !canonicalChannel
-            ) {
-              throw new Error(
-                "A selected channel is no longer available.",
-              );
-            }
+        return {
+          feedbackId: feedbackRows[index].id,
+          themeId: canonicalTheme.id,
+          confidence: 1,
+        };
+      },
+    );
 
-            if (
-              !canonicalTheme
-            ) {
-              throw new Error(
-                "A selected theme is no longer available.",
-              );
-            }
+    const importedCount = await prisma.$transaction(
+      async (tx) => {
+        await tx.feedback.createMany({
+          data: feedbackRows,
+        });
 
-            const created =
-              await tx.feedback.create(
-                {
-                  data: {
-                    content:
-                      row.content.trim(),
+        await tx.feedbackTheme.createMany({
+          data: feedbackThemeRows,
+        });
 
-                    channel:
-                      canonicalChannel,
-
-                    customerLabel:
-                      row.customerLabel.trim(),
-
-                    sourceRef:
-                      row.sourceRef.trim() ||
-                      null,
-
-                    sentiment:
-                      row.sentiment as
-                        | "POS"
-                        | "NEU"
-                        | "NEG",
-
-                    sentimentScore:
-                      null,
-
-                    status:
-                      "NEW",
-
-                    workspaceId,
-                  },
-
-                  select: {
-                    id: true,
-                  },
-                },
-              );
-
-            await tx.feedbackTheme.create(
-              {
-                data: {
-                  feedbackId:
-                    created.id,
-
-                  themeId:
-                    canonicalTheme.id,
-
-                  confidence: 1,
-                },
-              },
-            );
-
-            count += 1;
-          }
-
-          return count;
-        },
-      );
+        return feedbackRows.length;
+      },
+    );
 
     return NextResponse.json(
       {
